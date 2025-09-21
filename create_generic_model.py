@@ -110,4 +110,5 @@ offset[1] += 0.05  # add 5 cm vertical offset
 add_theia_frame(model, state, 'upper_torso', '/bodyset/torso', offset)
 
 model.finalizeConnections()
+model.setName('unscaled_generic')
 model.printToXML('unscaled_generic.osim')

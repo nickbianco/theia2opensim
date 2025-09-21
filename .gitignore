@@ -3,3 +3,10 @@
 *.sto
 
 config.yaml
+
+__pycache__
+
+opensim.log
+
+/dependencies/opensim
+/data

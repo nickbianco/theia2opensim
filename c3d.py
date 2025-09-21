@@ -49,7 +49,7 @@ class C3D:
             for ilabel, label in enumerate(labels):
                 position = data[:, 3, ilabel, iframe] / 1000.0  # mm to m
                 row[ilabel] = osim.Vec3(position[0], position[1], position[2])
-                row[ilabel] = self.rotation.multiply(row[ilabel])
+                row[ilabel] = self.data_rotation.multiply(row[ilabel])
 
             table.appendRow(times[iframe], row)
 
@@ -74,8 +74,8 @@ class C3D:
                 mat33 = osim.Mat33(rot[0,0], rot[0,1], rot[0,2],
                                    rot[1,0], rot[1,1], rot[1,2],
                                    rot[2,0], rot[2,1], rot[2,2])
-                rotation = self.rotation.multiply(osim.Rotation(mat33))
-                rotation = rotation.multiply(self.rotation2)
+                rotation = self.data_rotation.multiply(osim.Rotation(mat33))
+                rotation = rotation.multiply(self.frame_rotation)
 
                 # Store as a quaternion.
                 new_quat = rotation.convertRotationToQuaternion()
@@ -92,20 +92,3 @@ class C3D:
         table.addTableMetaDataString("DataRate", str(rate))
 
         return table
-
-
-c3d = C3D(os.path.join('data', 'acl', 'theia', 'jump_1', 'pose_0.c3d'))
-positions = c3d.get_frame_positions_table()
-rotations = c3d.get_frame_rotations_table()
-
-trc = osim.TRCFileAdapter()
-trc.write(positions, 'positions.trc')
-
-sto = osim.STOFileAdapterQuaternion()
-sto.write(rotations, 'rotations.sto')
-
-
-# print(dir(c))
-# print(c.parameters.ROTATION.LABELS)
-# import pdb; pdb.set_trace()
-
