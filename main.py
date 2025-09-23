@@ -1,16 +1,19 @@
 import os
-from import_data import import_data
-from create_generic_model import create_generic_model
+from copy import deepcopy
+from theia2opensim.import_data import import_data
+from theia2opensim.create_generic_model import create_generic_model
+from theia2opensim.scale_model import scale_model
+from theia2opensim.inverse_kinematics import run_inverse_kinematics
 
 # Step 1: Import data.
 # --------------------
 # Import a trial from the Theia dataset located in the original data path (as defined in
 # the 'config.yaml' file) to a new location in this repository's "data" folder. The
 # paths below are relative to those two locations, respectively.
-# original_trial_relpath = os.path.join('ACL Registry CMJ', 'Theia output data',
-#                                           'Counter-Movement Jump Markerless 1')
-# data_relpath = os.path.join('acl', 'jump_1')
-# import_data(original_trial_relpath, data_relpath)
+original_trial_relpath = os.path.join('ACL Registry CMJ', 'Theia output data',
+                                          'Counter-Movement Jump Markerless 1')
+trial_relpath = os.path.join('acl', 'jump_1')
+import_data(original_trial_relpath, trial_relpath)
 
 # Step 2: Create the generic OpenSim model.
 # -----------------------------------------
@@ -34,6 +37,8 @@ offset_frame_map = {
     'r_uarm': '/jointset/acromial_r/humerus_r_offset',
     'r_larm': '/jointset/elbow_r/ulna_r_offset',
     'r_hand': '/jointset/radius_hand_r/hand_r_offset',
+    'pelvis': '/bodyset/pelvis',
+    'torso': '/bodyset/torso',
 }
 
 # Create a generic model by adding new PhysicalOffsetFrames to an existing OpenSim model
@@ -52,16 +57,78 @@ offset_frame_map = {
 # right shoulder joints, with a small vertical offset (to better match the Theia torso
 # frame location). The vertical offset is specified by the 'torso_frame_offset' input
 # variable below.
-input_model_fpath = os.path.join('models', 'RajagopalLaiUhlrich2023.osim')
-output_model_fpath = 'unscaled_generic.osim'
+model_fpath = os.path.join('models', 'RajagopalLaiUhlrich2023.osim')
+generic_model_fpath = 'unscaled_generic.osim'
 torso_frame_offset = 0.05 # TODO: find a better way to automatically detect this offset
-create_generic_model(input_model_fpath, offset_frame_map, torso_frame_offset,
-                     output_model_fpath)
+create_generic_model(model_fpath, offset_frame_map, torso_frame_offset,
+                     generic_model_fpath)
 
 # Step 3: Model scaling.
 # ----------------------
+# A map defining the rules for computing scale factors for each segment. Each rule is a
+# tuple of (Theia frame 1, Theia frame 2, axis index), where the axis index is 0 for X,
+# 1 for Y, and 2 for Z. The scale factor for a segment is computed as the ratio of the
+# distance between the two Theia frames to the distance between the corresponding
+# offset frames in the model.
+scale_rules = {
+    'pelvis':    [('pelvis', 'torso', 1),
+                  ('l_thigh', 'r_thigh', 2)],
+    'torso':     [('torso', 'pelvis', 1),
+                  ('l_uarm', 'r_uarm', 2)],
+    'humerus_r': [('r_uarm', 'r_larm', 1)],
+    'humerus_l': [('l_uarm', 'l_larm', 1)],
+    'radius_r':  [('r_larm', 'r_hand', 1)],
+    'radius_l':  [('l_larm', 'l_hand', 1)],
+    'femur_r':   [('r_thigh', 'r_shank', 1)],
+    'femur_l':   [('l_thigh', 'l_shank', 1)],
+    'tibia_r':   [('r_shank', 'r_foot', 1)],
+    'tibia_l':   [('l_shank', 'l_foot', 1)],
+    'calcn_r':   [('r_foot', 'r_toes', 0),
+                  ('r_foot', 'r_toes', 1)],
+    'calcn_l':   [('l_foot', 'l_toes', 0),
+                  ('l_foot', 'l_toes', 1)],
+}
+scale_rules['ulna_r'] = deepcopy(scale_rules['radius_r'])
+scale_rules['hand_r'] = deepcopy(scale_rules['radius_r'])
+scale_rules['ulna_l'] = deepcopy(scale_rules['radius_l'])
+scale_rules['hand_l'] = deepcopy(scale_rules['radius_l'])
+scale_rules['talus_r'] = deepcopy(scale_rules['calcn_r'])
+scale_rules['toes_r'] = deepcopy(scale_rules['calcn_r'])
+scale_rules['talus_l'] = deepcopy(scale_rules['calcn_l'])
+scale_rules['toes_l'] = deepcopy(scale_rules['calcn_l'])
 
+# Whether or not to average the scale factors for left and right segments to enforce
+# symmetry.
+enforce_symmetry = True
 
+# If the medio-lateral dimension of the pelvis is scaled directly based on the distance
+# between the left and right hip joint centers as estimated from Theia data, the hip
+# becomes unreliastically wide. For now, to avoid this issue, we shift both hip joint
+# centers laterally relative to the pelvis center by this offset before computing the
+# scale factor for the pelvis segment.
+#
+# This is definitely kludgy (e.g., the greater trochanter of the femur geometry is no
+# longer in the hip socket), but it is better than a super wide pelvis, and it seems
+# like Visual 3D might be applying a similar offset.
+#
+# TODO: replace this offset with a better estimate (e.g., from the ANSUR II dataset).
+hip_joint_offset = 0.03
+
+# Use the Model::scale() method to scale the model. The scaled model is saved to the
+# data trial folder.
+trial_path = os.path.join('data', trial_relpath)
+c3d_filename = 'pose_0.c3d'
+scaled_model_name = 'jump_1_scaled'
+scale_model(generic_model_fpath, trial_path, c3d_filename, offset_frame_map,
+            scale_rules, hip_joint_offset, scaled_model_name)
 
 # Step 4: Inverse kinematics.
 # ---------------------------
+# Using CasADi (https://web.casadi.org/), create a custom inverse kinematics problem
+# that minimizes the error between model and Theia frame positions and orientations.
+weights = {'position': 10.0,
+           'orientation': 0.1}
+scaled_model_path = os.path.join('data', trial_relpath, 'jump_1_scaled.osim')
+convergence_tolerance = 1e-2
+run_inverse_kinematics(scaled_model_path, trial_path, c3d_filename, offset_frame_map,
+                       weights, convergence_tolerance)

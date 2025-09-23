@@ -23,11 +23,11 @@ def add_theia_frame(model, state, theia_frame_name, model_frame_path, offset):
 
     frame.addComponent(offset_frame)
 
-def create_generic_model(input_model_fpath, offset_frame_map, torso_frame_offset,
-                         output_model_fpath):
+def create_generic_model(model_fpath, offset_frame_map, torso_frame_offset,
+                         generic_model_fpath):
 
     # Load the generic model and weld the subtalar joints.
-    modelProcessor = osim.ModelProcessor(input_model_fpath)
+    modelProcessor = osim.ModelProcessor(model_fpath)
     jointsToWeld = osim.StdVectorString()
     jointsToWeld.append('subtalar_l')
     jointsToWeld.append('subtalar_r')
@@ -43,8 +43,9 @@ def create_generic_model(input_model_fpath, offset_frame_map, torso_frame_offset
     # Add new frames to the model based on the Theia data.
     zero_offset = osim.Vec3(0)
     for theia_frame_name in offset_frame_map.keys():
-        add_theia_frame(model, state, theia_frame_name,
-                        offset_frame_map[theia_frame_name], zero_offset)
+        if '/bodyset' not in offset_frame_map[theia_frame_name]:
+            add_theia_frame(model, state, theia_frame_name,
+                            offset_frame_map[theia_frame_name], zero_offset)
 
     # Add pelvis frame.
     # ----------------
@@ -66,7 +67,7 @@ def create_generic_model(input_model_fpath, offset_frame_map, torso_frame_offset
                          0.5 * (p_left[2] + p_right[2]))
 
     offset = ground.findStationLocationInAnotherFrame(state, p_pelvis, pelvis)
-    add_theia_frame(model, state, 'lower_pelvis', '/bodyset/pelvis', offset)
+    add_theia_frame(model, state, 'pelvis', offset_frame_map['pelvis'], offset)
 
     # Add torso frame.
     # ----------------
@@ -89,8 +90,8 @@ def create_generic_model(input_model_fpath, offset_frame_map, torso_frame_offset
 
     offset = ground.findStationLocationInAnotherFrame(state, p_torso, torso)
     offset[1] += torso_frame_offset
-    add_theia_frame(model, state, 'upper_torso', '/bodyset/torso', offset)
+    add_theia_frame(model, state, 'torso', offset_frame_map['torso'], offset)
 
     model.finalizeConnections()
     model.setName('unscaled_generic')
-    model.printToXML(output_model_fpath)
+    model.printToXML(generic_model_fpath)

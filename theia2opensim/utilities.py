@@ -50,6 +50,9 @@ class C3D:
         return table
 
     def update_column_labels(self, table):
+        if not self.label_map:
+            return table
+
         labels = list(table.getColumnLabels())
         for ilabel in range(len(labels)):
             labels[ilabel] = self.label_map.get(labels[ilabel])
