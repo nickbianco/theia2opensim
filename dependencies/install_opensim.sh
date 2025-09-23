@@ -10,10 +10,7 @@ MOCO="off"
 ORG="opensim-org"
 BRANCH="main"
 GENERATOR="Unix Makefiles"
-PYTHON_ROOT_DIR="/Users/nbianco/miniconda3/envs/opensim_dev"
-
-# Python dependencies can be installed via pip in the conda environment
-pip install numpy setuptools
+PYTHON_ROOT_DIR=$1
 
 # Set the working directory.
 WORKING_DIR="$(pwd)/opensim"
@@ -41,5 +38,3 @@ cd $WORKING_DIR/opensim-core/build
 cmake $WORKING_DIR/opensim-core -G"$GENERATOR" -DOPENSIM_DEPENDENCIES_DIR=$WORKING_DIR/opensim_dependencies_install/ -DOPENSIM_C3D_PARSER=ezc3d -DBUILD_TESTING=off -DCMAKE_INSTALL_PREFIX=$WORKING_DIR/opensim_core_install -DOPENSIM_INSTALL_UNIX_FHS=off -DOPENSIM_WITH_CASADI=$MOCO -DOPENSIM_WITH_TROPTER=$MOCO -DBUILD_PYTHON_WRAPPING=on -DPython3_ROOT_DIR=$PYTHON_ROOT_DIR
 cmake --build . --config $DEBUG_TYPE -j$NUM_JOBS
 cmake --install .
-
-# cd ~/opensim-core/bin && echo -e "yes" | ./opensim-install-command-line.sh
