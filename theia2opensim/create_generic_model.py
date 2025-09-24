@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import opensim as osim
 
 def add_theia_frame(model, state, theia_frame_name, model_frame_path, offset):
@@ -33,6 +34,15 @@ def create_generic_model(model_fpath, offset_frame_map, torso_frame_offset,
     jointsToWeld.append('subtalar_r')
     modelProcessor.append(osim.ModOpReplaceJointsWithWelds(jointsToWeld))
     model = modelProcessor.process()
+    model.initSystem()
+
+    # Update the should coordinate ranges.
+    coordset = model.updCoordinateSet()
+    for name in ['arm_flex', 'arm_add', 'arm_rot']:
+        for side in ['l', 'r']:
+            coord = coordset.get(f'{name}_{side}')
+            coord.setRangeMin(-2.0*np.pi)
+            coord.setRangeMax(2.0*np.pi)
 
     # The state represents the model in the default pose: the model is facing forward
     # along the X axis, and the Z axis is pointing to the right (Y is up). The frame

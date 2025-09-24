@@ -8,16 +8,14 @@ from theia2opensim.utilities import C3D, get_coordinate_indexes, get_ipopt_optio
 # step. This will allow us to embed the tracking cost into a CasADi expression graph,
 # which enables us to construct the NLP below.
 class TrackingCost(ca.Callback):
-    def __init__(self, name, model, coordinate_indexes, positions, quaternions, weights,
-                opts={}):
+    def __init__(self, name, model, coordinate_indexes, frame_paths, positions,
+                 quaternions, weights, opts={}):
         ca.Callback.__init__(self)
         self.model = model
         self.state = self.model.initSystem()
         self.coordinate_indexes = coordinate_indexes
         self.weights = weights
-
-        # Get the frame paths.
-        self.frame_paths = positions.getColumnLabels()
+        self.frame_paths = frame_paths
 
         # Convert the position data to a numpy array.
         self.positions = np.zeros((3, positions.size()))
@@ -113,6 +111,7 @@ def run_inverse_kinematics(scaled_model_path, trial_path, c3d_filename,
     c3d = C3D(c3d_filepath, columns_to_ignore=columns_to_ignore, label_map=label_map)
     positions_table = c3d.get_positions_table()
     quaternions_table = c3d.get_quaternions_table()
+    frame_paths = positions_table.getColumnLabels()
     times = positions_table.getIndependentColumn()
 
     # Inverse kinematics
@@ -143,8 +142,8 @@ def run_inverse_kinematics(scaled_model_path, trial_path, c3d_filename,
         # Construct the callback function defining the tracking cost.
         positions = positions_table.getRowAtIndex(itime)
         quaternions = quaternions_table.getRowAtIndex(itime)
-        cost = TrackingCost('tracking_cost', model, coordinate_indexes, positions,
-                            quaternions, weights, {'enable_fd': True})
+        cost = TrackingCost('tracking_cost', model, coordinate_indexes, frame_paths,
+                            positions, quaternions, weights, {'enable_fd': True})
         obj = ca.Function('f', [x], [cost(x)])
         f = obj(x)
 

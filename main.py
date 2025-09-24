@@ -103,7 +103,7 @@ enforce_symmetry = True
 
 # If the medio-lateral dimension of the pelvis is scaled directly based on the distance
 # between the left and right hip joint centers as estimated from Theia data, the hip
-# becomes unreliastically wide. For now, to avoid this issue, we shift both hip joint
+# becomes unrealistically wide. For now, to avoid this issue, we shift both hip joint
 # centers laterally relative to the pelvis center by this offset before computing the
 # scale factor for the pelvis segment.
 #
@@ -120,7 +120,7 @@ trial_path = os.path.join('data', trial_relpath)
 c3d_filename = 'pose_0.c3d'
 scaled_model_name = 'jump_1_scaled'
 scale_model(generic_model_fpath, trial_path, c3d_filename, offset_frame_map,
-            scale_rules, hip_joint_offset, scaled_model_name)
+            scale_rules, enforce_symmetry, hip_joint_offset, scaled_model_name)
 
 # Step 4: Inverse kinematics.
 # ---------------------------
