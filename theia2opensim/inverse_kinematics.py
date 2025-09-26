@@ -25,10 +25,10 @@ class TrackingCost(ca.Callback):
         # Convert the quaternion data to a list of rotations. We precompute the
         # transpose of the rotations of the data frames, because we need to compute the
         # rotation of the data frame relative to the model frame, R_DF = R_DG * R_GF.
-        self.quaternions = quaternions
+        self.q_GD = quaternions
         self.R_DG = []
-        for i in range(self.quaternions.size()):
-            rotation = osim.Rotation(self.quaternions.getElt(0, i))
+        for i in range(self.q_GD.size()):
+            rotation = osim.Rotation(self.q_GD.getElt(0, i))
             self.R_DG.append(osim.Rotation(rotation.transpose()))
 
         # Construct the callback.
@@ -64,10 +64,22 @@ class TrackingCost(ca.Callback):
             # we convert this rotation to an angle-axis representation and use the angle
             # as the rotation error.
             R_GF = frame.getRotationInGround(self.state)
-            R_DF = self.R_DG[i].multiply(R_GF)
-            # The first element of the returned Vec4 is the angle of rotation.
-            AA = R_DF.convertRotationToAngleAxis()
-            rotation_errors.append(AA.get(0))
+
+            # R_DF = self.R_DG[i].multiply(R_GF)
+            # # The first element of the returned Vec4 is the angle of rotation.
+            # AA = R_DF.convertRotationToAngleAxis()
+            # rotation_errors.append(AA.get(0))
+
+            q_GF = R_GF.convertRotationToQuaternion()
+            q_GD = self.q_GD.getElt(0, i)
+
+            # Compute the quaternion distance.
+            # https://math.stackexchange.com/questions/90081/quaternion-distance
+            inner_product = (q_GD.get(0)*q_GF.get(0) + q_GD.get(1)*q_GF.get(1) +
+                             q_GD.get(2)*q_GF.get(2) + q_GD.get(3)*q_GF.get(3))
+            error = 1 - inner_product*inner_product
+
+            rotation_errors.append(error)
 
         return position_errors, rotation_errors
 
@@ -134,6 +146,29 @@ def run_inverse_kinematics(scaled_model_path, trial_path, c3d_filename,
         x0.append(coord.getDefaultValue())
         lbx.append(coord.getRangeMin())
         ubx.append(coord.getRangeMax())
+
+    # Solve position-only optimization to create an inital guess for the full IK
+    # problem.
+    init_weights = {'position': 10.0,
+                    'orientation': 1.0}
+    positions = positions_table.getRowAtIndex(0)
+    quaternions = quaternions_table.getRowAtIndex(0)
+    cost = TrackingCost('tracking_cost', model, coordinate_indexes, frame_paths,
+                        positions, quaternions, init_weights, {'enable_fd': True})
+    obj = ca.Function('f', [x], [cost(x)])
+    f = obj(x)
+
+    # Form the non-linear program (NLP).
+    nlp = {'x': x, 'f': f}
+
+    # Allocate a solver.
+    opts = {}
+    opts['ipopt'] = get_ipopt_options(convergence_tolerance)
+    solver = ca.nlpsol('solver', 'ipopt', nlp, opts)
+
+    # Solve the NLP.
+    sol = solver(x0=x0, lbx=lbx, ubx=ubx)
+    x0 = sol['x']
 
     # Iterate over all of the time steps in the tracking data and solve the
     statesTraj = osim.StatesTrajectory()
