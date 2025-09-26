@@ -57,7 +57,8 @@ class TrackingCost(ca.Callback):
             # Compute the position error as the norm of the difference between model and
             # data positions.
             position = frame.getPositionInGround(self.state).to_numpy()
-            position_errors.append(np.linalg.norm(position - self.positions[:,i]))
+            position_errors.append(np.square(
+                    np.linalg.norm(position - self.positions[:,i])))
 
             # Compute the rotation error. To do this, we first compute the rotation
             # between the model frame and the data frame, R_DF = R_DG * R_GF. Then,
@@ -98,8 +99,8 @@ class TrackingCost(ca.Callback):
         # squared errors.
         pos_errors, rot_errors = self.calc_errors()
         return [
-                self.weights['position']    * np.sum(np.square(pos_errors)) +
-                self.weights['orientation'] * np.sum(np.square(rot_errors))
+                self.weights['position']    * np.sum(pos_errors) +
+                self.weights['orientation'] * np.sum(rot_errors)
                 ]
 
 def run_inverse_kinematics(scaled_model_path, trial_path, c3d_filename,
