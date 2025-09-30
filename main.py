@@ -147,7 +147,7 @@ convergence_tolerance = 1e-3
 # which is roughly 10X faster.
 finite_differences = False
 
-
+# Run inverse kinematics.
 start_time = time.time()
 run_inverse_kinematics(scaled_model_path, trial_path, c3d_filename, offset_frame_map,
                        weights, convergence_tolerance,

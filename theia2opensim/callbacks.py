@@ -30,6 +30,14 @@ class Callback(ca.Callback, ABC):
     def eval(self, arg):
         return self._eval(arg)
 
+    def apply_state(self, arg):
+        # Apply the input coordinates to the model state and realize the system to the
+        # position stage.
+        q = np.zeros(self.state.getNQ())
+        q[self.coordinate_indexes] = np.squeeze(arg[0].full())
+        self.state.setQ(osim.Vector.createFromMat(q))
+        self.model.realizePosition(self.state)
+
     @abstractmethod
     def _get_num_inputs(self):
         pass
@@ -115,14 +123,6 @@ class TrackingCostMixin:
     def _get_num_outputs(self):
         return 1
 
-    def _apply_state(self, arg):
-        # Apply the input coordinates to the model state and realize the system to the
-        # position stage.
-        q = np.zeros(self.state.getNQ())
-        q[self.coordinate_indexes] = np.squeeze(arg[0].full())
-        self.state.setQ(osim.Vector.createFromMat(q))
-        self.model.realizePosition(self.state)
-
     def _calc_errors(self):
         position_errors = []
         orientation_errors = []
@@ -151,7 +151,7 @@ class TrackingCostMixin:
         return position_errors, orientation_errors
 
     def _eval(self, arg):
-        self._apply_state(arg)
+        self.apply_state(arg)
 
         # Compute the position and orientation errors, and return the weighted sum of
         # squared errors.
@@ -219,7 +219,7 @@ class TrackingCostJacobianCallback(TrackingCostMixin, JacobianCallback):
         return J_p + J_R
 
     def _jac_eval(self, arg):
-        self._apply_state
+        self.apply_state(arg)
         J = np.zeros((self.state.getNQ()))
         for i, frame in enumerate(self.frames):
             J_i = self._calc_frame_error_jacobian(frame, self.stations[i],
