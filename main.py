@@ -127,8 +127,9 @@ scale_model(generic_model_fpath, trial_path, c3d_filename, offset_frame_map,
 # Using CasADi (https://web.casadi.org/), create a custom inverse kinematics problem
 # that minimizes the error between model and Theia frame positions and orientations.
 weights = {'position': 1.0,
-           'orientation': 1.0}
+           'orientation': 1.0,
+           'smoothness': 0.1}
 scaled_model_path = os.path.join('data', trial_relpath, 'jump_1_scaled.osim')
 convergence_tolerance = 1e-2
 run_inverse_kinematics(scaled_model_path, trial_path, c3d_filename, offset_frame_map,
-                       weights, convergence_tolerance)
+                       weights, convergence_tolerance, finite_differences=False)

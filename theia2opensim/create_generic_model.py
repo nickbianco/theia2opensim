@@ -36,13 +36,19 @@ def create_generic_model(model_fpath, offset_frame_map, torso_frame_offset,
     model = modelProcessor.process()
     model.initSystem()
 
-    # Update the should coordinate ranges.
+    # Update coordinate ranges.
     coordset = model.updCoordinateSet()
     for name in ['arm_flex', 'arm_add', 'arm_rot']:
         for side in ['l', 'r']:
             coord = coordset.get(f'{name}_{side}')
             coord.setRangeMin(-2.0*np.pi)
             coord.setRangeMax(2.0*np.pi)
+
+    for side in ['l', 'r']:
+        knee_angle = coordset.get(f'knee_angle_{side}')
+        knee_angle_beta = coordset.get(f'knee_angle_{side}_beta')
+        knee_angle_beta.setRangeMin(knee_angle.getRangeMin())
+        knee_angle_beta.setRangeMax(knee_angle.getRangeMax())
 
     # The state represents the model in the default pose: the model is facing forward
     # along the X axis, and the Z axis is pointing to the right (Y is up). The frame

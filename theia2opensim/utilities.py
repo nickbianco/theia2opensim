@@ -120,37 +120,38 @@ class C3D:
         return table
 
 
-def get_coordinate_indexes(model):
+def get_coordinate_indexes(model, skip_dependent_coordinates=True):
     """Get a mapping of coordinate paths to their indexes in the state vector.
-    This only includes independent coordinates (i.e. not coupled coordinates).
     """
     state = model.getWorkingState()
     state_paths = osim.createStateVariableNamesInSystemOrder(model)
-
     coordinates_map = {}
     for i, state_path in enumerate(state_paths):
         if 'value' in state_path:
             coord_path = state_path.replace('/value', '')
             coordinate = osim.Coordinate.safeDownCast(model.getComponent(coord_path))
-            if not coordinate.isDependent(state):
+            if skip_dependent_coordinates:
+                if not coordinate.isDependent(state):
+                    coordinates_map[coord_path] = i
+            else:
                 coordinates_map[coord_path] = i
 
     return coordinates_map
 
 
-def get_ipopt_options(convergence_tolerance=1e-4, constraint_tolerance=1e-4,
-                      hessian_approximation='limited-memory'):
+def get_ipopt_options(convergence_tolerance=1e-4):
     """Get a dictionary of common IPOPT options for use with CasADi's nlpsolver.
     """
     ipopt_options = {}
-    ipopt_options["hessian_approximation"] = hessian_approximation
-    ipopt_options["tol"] = convergence_tolerance
-    ipopt_options["dual_inf_tol"] = convergence_tolerance
-    ipopt_options["compl_inf_tol"] = convergence_tolerance
-    ipopt_options["acceptable_tol"] = convergence_tolerance
-    ipopt_options["acceptable_dual_inf_tol"] = convergence_tolerance
-    ipopt_options["acceptable_compl_inf_tol"] = convergence_tolerance
-    ipopt_options["constr_viol_tol"] = constraint_tolerance
-    ipopt_options["acceptable_constr_viol_tol"] = constraint_tolerance
+    ipopt_options['hessian_approximation'] = 'limited-memory'
+    ipopt_options['tol'] = convergence_tolerance
+    ipopt_options['dual_inf_tol'] = convergence_tolerance
+    ipopt_options['compl_inf_tol'] = convergence_tolerance
+    ipopt_options['acceptable_tol'] = convergence_tolerance
+    ipopt_options['acceptable_dual_inf_tol'] = convergence_tolerance
+    ipopt_options['acceptable_compl_inf_tol'] = convergence_tolerance
+    # ipopt_options['constr_viol_tol'] = constraint_tolerance
+    # ipopt_options['acceptable_constr_viol_tol'] = constraint_tolerance
+    ipopt_options['print_level'] = 0
 
     return ipopt_options
