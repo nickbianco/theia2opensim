@@ -13,7 +13,7 @@ def run_optimization(model, coordinate_indexes, frame_paths, positions, quaterni
     x = ca.SX.sym('x', len(coordinate_indexes))
 
     # Construct the callback function defining the tracking cost.
-    # If finite_differences is True, the Jacobian will be computed using finite
+    # If 'finite_differences' is True, the Jacobian will be computed using finite
     # differences. Otherwise, a callback function that provides an analytical
     # Jacobian will be used.
     if finite_differences:
