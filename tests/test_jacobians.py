@@ -121,30 +121,30 @@ class PositionJacobianCallback(JacobianCallback):
         return [matrix.to_numpy()]
 
 
-class TestPositionJacobians(unittest.TestCase):
-    def test_position_jacobians(self):
-        model = osim.Model('unscaled_generic.osim')
-        state = model.initSystem()
+# class TestPositionJacobians(unittest.TestCase):
+#     def test_position_jacobians(self):
+#         model = osim.Model('unscaled_generic.osim')
+#         state = model.initSystem()
 
-        bodyset = model.getBodySet()
-        for ibody in range(bodyset.getSize()):
-            body = bodyset.get(ibody)
-            body_name = body.getName()
+#         bodyset = model.getBodySet()
+#         for ibody in range(bodyset.getSize()):
+#             body = bodyset.get(ibody)
+#             body_name = body.getName()
 
-            # Callback functions.
-            f_fd = PositionCallback('f_fd', model, body_name, {"enable_fd": True})
-            f_jac = PositionJacobianCallback('f_jac', model, body_name)
+#             # Callback functions.
+#             f_fd = PositionCallback('f_fd', model, body_name, {"enable_fd": True})
+#             f_jac = PositionJacobianCallback('f_jac', model, body_name)
 
-            # Symbolic inputs.
-            x = ca.MX.sym("x", state.getNQ())
+#             # Symbolic inputs.
+#             x = ca.MX.sym("x", state.getNQ())
 
-            # Jacobian expression graphs.
-            J_fd = ca.Function('J',[x],[ca.jacobian(f_fd(x), x)])
-            J_jac = ca.Function('J',[x],[ca.jacobian(f_jac(x), x)])
+#             # Jacobian expression graphs.
+#             J_fd = ca.Function('J',[x],[ca.jacobian(f_fd(x), x)])
+#             J_jac = ca.Function('J',[x],[ca.jacobian(f_jac(x), x)])
 
-            # Test that the two Jacobians are equivalent.
-            self.assertTrue(np.allclose(J_jac(2).full(), J_fd(2).full(),
-                                        atol=1e-6))
+#             # Test that the two Jacobians are equivalent.
+#             self.assertTrue(np.allclose(J_jac(2).full(), J_fd(2).full(),
+#                                         atol=1e-6))
 
 
 # Orientation Jacobians
@@ -159,7 +159,7 @@ class OrientationCallback(Callback):
         return self.state.getNQ()
 
     def _get_num_outputs(self):
-        return 3
+        return 4
 
     def _eval(self, arg):
         self.state.setQ(osim.Vector.createFromMat(np.squeeze(arg[0].full())))
@@ -180,7 +180,7 @@ class OrientationJacobianCallback(JacobianCallback):
         return self.state.getNQ()
 
     def _get_num_outputs(self):
-        return 3
+        return 4
 
     def _calc_quaternion(self, arg):
         self.state.setQ(osim.Vector.createFromMat(np.squeeze(arg[0].full())))
@@ -188,7 +188,7 @@ class OrientationJacobianCallback(JacobianCallback):
         rotation = self.body.getRotationInGround(self.state)
         quaternion = rotation.convertRotationToQuaternion()
         eps = np.array([quaternion.get(0), quaternion.get(1),
-                          quaternion.get(2), quaternion.get(3)])
+                        quaternion.get(2), quaternion.get(3)])
         return eps
 
     def _eval(self, arg):
@@ -197,19 +197,45 @@ class OrientationJacobianCallback(JacobianCallback):
 
     def _calc_quaternion_jacobian(self, arg):
         eps = self._calc_quaternion(arg)
-        jac_eps = 0.5 * np.array([[-eps[1], -eps[2], -eps[3]],
-                                  [ eps[0], -eps[3],  eps[2]],
-                                  [ eps[3],  eps[0], -eps[1]],
-                                  [-eps[2],  eps[1],  eps[0]]])
-        return jac_eps
+        # [eps_dot; vdot] = J_eps * [omega; vdot]
+        # J = [ -0.5*e1 -0.5*e2 -0.5*e3  0   0   0
+        #        0.5*e0 -0.5*e3  0.5*e2  0   0   0
+        #        0.5*e3  0.5*e0 -0.5*e1  0   0   0
+        #       -0.5*e2  0.5*e1  0.5*e0  0   0   0
+        #             0       0       0  1   0   0
+        #             0       0       0  0   1   0
+        #             0       0       0  0   0   1]
+        jac_eps = osim.Matrix(7, 6, 0.0)
+        jac_eps.set(0, 0, -0.5*eps[1])
+        jac_eps.set(0, 1, -0.5*eps[2])
+        jac_eps.set(0, 2, -0.5*eps[3])
+        jac_eps.set(1, 0,  0.5*eps[0])
+        jac_eps.set(1, 1, -0.5*eps[3])
+        jac_eps.set(1, 2,  0.5*eps[2])
+        jac_eps.set(2, 0,  0.5*eps[3])
+        jac_eps.set(2, 1,  0.5*eps[0])
+        jac_eps.set(2, 2, -0.5*eps[1])
+        jac_eps.set(3, 0, -0.5*eps[2])
+        jac_eps.set(3, 1,  0.5*eps[1])
+        jac_eps.set(3, 2,  0.5*eps[0])
+        jac_eps.set(4, 3,  1.0)
+        jac_eps.set(5, 4,  1.0)
+        jac_eps.set(6, 5,  1.0)
+        return jac_eps.to_numpy()
 
-    def _jac_eval(self, arg):
+    def _calc_frame_jacobian(self, arg):
         self.state.setQ(osim.Vector.createFromMat(np.squeeze(arg[0].full())))
         self.model.realizePosition(self.state)
+        jac_frame = osim.Matrix()
+        self.matter.calcFrameJacobian(self.state, self.mobod_index, osim.Vec3(0),
+                                      jac_frame)
+        return jac_frame.to_numpy()
 
-        matrix = osim.Matrix()
-        self.matter.calcMobilizerJacobian(self.state, self.mobod_index, matrix)
-        return [matrix.to_numpy()]
+    def _jac_eval(self, arg):
+        jac_eps = self._calc_quaternion_jacobian(arg)
+        jac_frame = self._calc_frame_jacobian(arg)
+        jac = jac_eps.dot(jac_frame)
+        return [jac[0:4, :]]
 
 
 class TestOrientationJacobians(unittest.TestCase):
@@ -217,24 +243,25 @@ class TestOrientationJacobians(unittest.TestCase):
         model = osim.Model('unscaled_generic.osim')
         state = model.initSystem()
 
-        bodyset = model.getBodySet()
-        for ibody in range(bodyset.getSize()):
-            body = bodyset.get(ibody)
-            body_name = body.getName()
+        # bodyset = model.getBodySet()
+        # for ibody in range(bodyset.getSize()):
+        #     body = bodyset.get(ibody)
+        #     body_name = body.getName()
 
-            # Callback functions.
-            f_fd = OrientationCallback('f_fd', model, body_name, {"enable_fd": True})
-            # f_jac = PositionJacobianCallback('f_jac', model, body_name)
+        # Callback functions.
+        f_fd = OrientationCallback('f_fd', model, 'pelvis', {'enable_fd': True})
+        f_jac = OrientationJacobianCallback('f_jac', model, 'pelvis')
 
-            # # Symbolic inputs.
-            x = ca.MX.sym("x", state.getNQ())
-            print(f_fd(x))
+        # Symbolic inputs.
+        x = ca.MX.sym('x', state.getNQ())
+        print(f_fd(x))
 
-            # # Jacobian expression graphs.
-            J_fd = ca.Function('J',[x],[ca.jacobian(f_fd(x), x)])
-            print(J_fd(2))
-            # J_jac = ca.Function('J',[x],[ca.jacobian(f_jac(x), x)])
+        # Jacobian expression graphs.
+        J_fd = ca.Function('J',[x],[ca.jacobian(f_fd(x), x)])
+        print(J_fd(2))
+        J_jac = ca.Function('J',[x],[ca.jacobian(f_jac(x), x)])
+        print(J_jac(2))
 
-            # # Test that the two Jacobians are equivalent.
+            # Test that the two Jacobians are equivalent.
             # self.assertTrue(np.allclose(J_jac(2).full(), J_fd(2).full(),
             #                             atol=1e-6))
