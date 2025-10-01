@@ -212,6 +212,8 @@ class TrackingCostJacobianCallback(TrackingCostMixin, JacobianCallback):
         w = jac_eps.T.dot(quaternion)
         spatial_vec = osim.SpatialVec(osim.Vec3(w[0], w[1], w[2]), osim.Vec3(0))
         vec = osim.Vector(self.state.getNQ(), 0.0)
+        # TODO: is there a way to use this function to compute both the position and
+        # orientation Jacobians in one shot?
         self.matter.multiplyByFrameJacobianTranspose(self.state, mobod_index,
                                                      station, spatial_vec, vec)
         J_R = self.weights['orientation'] * -2.0*(np.dot(eps, quaternion))*vec.to_numpy()
