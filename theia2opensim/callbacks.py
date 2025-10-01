@@ -123,6 +123,13 @@ class TrackingCostMixin:
     def _get_num_outputs(self):
         return 1
 
+    def _calc_quaternion(self, frame):
+        rotation = frame.getRotationInGround(self.state)
+        quaternion = rotation.convertRotationToQuaternion() # 40 flops
+        eps = np.array([quaternion.get(0), quaternion.get(1),
+                        quaternion.get(2), quaternion.get(3)])
+        return eps
+
     def _calc_errors(self):
         position_errors = []
         orientation_errors = []
@@ -133,24 +140,19 @@ class TrackingCostMixin:
             position_errors.append(np.square(
                     np.linalg.norm(position - self.positions[:,i])))
 
-            # Compute the rotation error. To do this, we first compute the rotation
-            # between the model frame and the data frame, R_DF = R_DG * R_GF. Then,
-            # we convert this rotation to a quaternion and compute the quaternion
-            # distance as the rotation error.
-            R_GF = frame.getRotationInGround(self.state)
+            # Get a quaternion representation of the current model frame's orientation
+            # with respect to ground.
+            eps = self._calc_quaternion(frame)
 
             # Compute the quaternion distance.
-            # https://math.stackexchange.com/questions/90081/quaternion-distance
-            q_GF = R_GF.convertRotationToQuaternion()
-            quaternion = self.quaternions[:, i]
-            inner_product = (quaternion[0]*q_GF.get(0) + quaternion[1]*q_GF.get(1) +
-                             quaternion[2]*q_GF.get(2) + quaternion[3]*q_GF.get(3))
-            error = 1 - inner_product*inner_product
+            # See section 2 in docs/frame_error_jacobians.pdf for details.
+            error = 1 - np.square(np.dot(eps, self.quaternions[:, i]))
             orientation_errors.append(error)
 
         return position_errors, orientation_errors
 
     def _eval(self, arg):
+        # Apply the optimization variables to the SimTK::State.
         self.apply_state(arg)
 
         # Compute the position and orientation errors, and return the weighted sum of
@@ -175,13 +177,6 @@ class TrackingCostJacobianCallback(TrackingCostMixin, JacobianCallback):
         JacobianCallback.__init__(self, name, model, coordinate_indexes, opts)
         self._init_tracking_cost(model, frame_paths, positions, quaternions, weights)
 
-    def _calc_quaternion(self, frame):
-        rotation = frame.getRotationInGround(self.state)
-        quaternion = rotation.convertRotationToQuaternion()
-        eps = np.array([quaternion.get(0), quaternion.get(1),
-                        quaternion.get(2), quaternion.get(3)])
-        return eps
-
     def _calc_quaternion_jacobian(self, eps):
         # Simbody -> /SimTKcommon/Mechanics/include/SimTKcommon/internal/Rotation.h#L712
         e = 0.5 * eps
@@ -196,32 +191,61 @@ class TrackingCostJacobianCallback(TrackingCostMixin, JacobianCallback):
     def _calc_frame_error_jacobian(self, frame, station, mobod_index, position,
                                    quaternion):
         # Position error Jacobian.
+        # ------------------------
+        # Compute the position error, error = p_GF - p_DG.
         error = frame.getPositionInGround(self.state)
         error[0] -= position[0]
         error[1] -= position[1]
         error[2] -= position[2]
 
+        # This is size NQ and not len(coordinate_indexes) because
+        # multiplyByStationJacobianTranspose() returns the Jacobian for all coordinates,
+        # including dependent coordinates. We will index out the dependent coordinates
+        # elements of the Jacobian before returning it.
         vec = osim.Vector(self.state.getNQ(), 0.0)
+
+        # Compute the Jacobian of the position error. See section 4 in
+        # docs/frame_error_jacobians.pdf for details.
         self.matter.multiplyByStationJacobianTranspose(self.state, mobod_index,
                                                        station, error, vec)
         J_p = self.weights['position'] * 2.0 * vec.to_numpy()
 
         # Orientation error Jacobian.
+        # --------------------------
+        # Calculate the quaternion representation of the current model frame with
+        # respect to ground.
         eps = self._calc_quaternion(frame)
+
+        # Relate the time derivative of the quaternion to the angular velocity.
+        # See section 5 in docs/frame_error_jacobians.pdf for details.
         jac_eps = self._calc_quaternion_jacobian(eps)
         w = jac_eps.T.dot(quaternion)
+
+        # Pack the angular velocity into a SpatialVec with zero linear velocity.
         spatial_vec = osim.SpatialVec(osim.Vec3(w[0], w[1], w[2]), osim.Vec3(0))
+
+        # This is size NQ and not len(coordinate_indexes) because
+        # multiplyByStationJacobianTranspose() returns the Jacobian for all coordinates,
+        # including dependent coordinates. We will index out the dependent coordinates
+        # elements of the Jacobian before returning it.
         vec = osim.Vector(self.state.getNQ(), 0.0)
-        # TODO: is there a way to use this function to compute both the position and
-        # orientation Jacobians in one shot?
+
+        # Compute the Jacobian of the orientation error. See section 5
+        # in docs/frame_error_jacobians.pdf for details.
         self.matter.multiplyByFrameJacobianTranspose(self.state, mobod_index,
                                                      station, spatial_vec, vec)
         J_R = self.weights['orientation'] * -2.0*(np.dot(eps, quaternion))*vec.to_numpy()
 
+        # Return the sum of the position and orientation error Jacobians for this frame.
         return J_p + J_R
 
     def _jac_eval(self, arg):
+        # Apply the optimal coordinates to the SimTK::State.
         self.apply_state(arg)
+
+        # Compute the Jacobian of the tracking cost by summing the Jacobians of the
+        # position and orientation errors for each frame.
+        # See section 6 in docs/frame_error_jacobians.pdf for details.
         J = np.zeros((self.state.getNQ()))
         for i, frame in enumerate(self.frames):
             J_i = self._calc_frame_error_jacobian(frame, self.stations[i],
@@ -230,4 +254,5 @@ class TrackingCostJacobianCallback(TrackingCostMixin, JacobianCallback):
                                                  self.quaternions[:,i])
             J += J_i
 
+        # Index out the dependent coordinates and return the Jacobian.
         return [np.expand_dims(J[self.coordinate_indexes], axis=0)]
