@@ -1,4 +1,5 @@
 import os
+import time
 from copy import deepcopy
 from theia2opensim.import_data import import_data
 from theia2opensim.create_generic_model import create_generic_model
@@ -126,9 +127,30 @@ scale_model(generic_model_fpath, trial_path, c3d_filename, offset_frame_map,
 # ---------------------------
 # Using CasADi (https://web.casadi.org/), create a custom inverse kinematics problem
 # that minimizes the error between model and Theia frame positions and orientations.
-weights = {'position': 1.0,
-           'orientation': 1.0}
 scaled_model_path = os.path.join('data', trial_relpath, 'jump_1_scaled.osim')
-convergence_tolerance = 1e-2
+
+# Cost function weights.
+# - position: squared norm of frame position errors (in m^2)
+# - orientation: quaternion distance of frame orientation errors (between [0, 1])
+# - smoothness: sum of squared differences in generalized coordinates between current
+#               and previous time step (in rad^2 or m^2)
+weights = {'position': 1.0,
+           'orientation': 1.0,
+           'smoothness': 0.5}
+
+# Convergence tolerance: controls various IPOPT tolerances (e.g., primal and dual
+# feasibility, acceptable tol, etc.).
+convergence_tolerance = 1e-3
+
+# Whether or not to compute the tracking cost derivative using finite differences. By
+# default, we set this to False to use an analytical derivatives computed from Simbody,
+# which is roughly 10X faster.
+finite_differences = False
+
+# Run inverse kinematics.
+start_time = time.time()
 run_inverse_kinematics(scaled_model_path, trial_path, c3d_filename, offset_frame_map,
-                       weights, convergence_tolerance)
+                       weights, convergence_tolerance,
+                       finite_differences=finite_differences)
+end_time = time.time()
+print(f"Inverse kinematics took {end_time - start_time:.2f} seconds")
