@@ -24,6 +24,15 @@ def add_theia_frame(model, state, theia_frame_name, model_frame_path, offset):
 
     frame.addComponent(offset_frame)
 
+
+def add_station(model, body_name, station_name, location):
+    bodyset = model.updBodySet()
+    body = bodyset.get(body_name)
+    station = osim.Station(body, location)
+    station.setName(station_name)
+    body.addComponent(station)
+
+
 def create_generic_model(model_fpath, offset_frame_map, torso_frame_offset,
                          generic_model_fpath):
 
@@ -108,6 +117,54 @@ def create_generic_model(model_fpath, offset_frame_map, torso_frame_offset,
     offset[1] += torso_frame_offset
     add_theia_frame(model, state, 'torso', offset_frame_map['torso'], offset)
 
+    # Remove the marker set.
+    # ----------------------
+    model.updMarkerSet().clearAndDestroy()
+
+    # Add stations for computing anthropometric measurements.
+    # ------------------------------------------------------
+    model.initSystem()
+
+    # head
+    add_station(model, 'torso', 'euryon_r', osim.Vec3(-0.0015, 0.595, 0.069))
+    add_station(model, 'torso', 'euryon_l', osim.Vec3(-0.0015, 0.595, -0.069))
+    add_station(model, 'torso', 'glabella', osim.Vec3(0.08, 0.58, 0.0))
+    add_station(model, 'torso', 'opisthocranion', osim.Vec3(-0.08, 0.56, 0.0))
+
+    # torso
+    add_station(model, 'torso', 'acromion_r', osim.Vec3(0.0, 0.41, 0.13))
+    add_station(model, 'torso', 'acromion_l', osim.Vec3(0.0, 0.41, -0.13))
+
+    # pelvis
+    add_station(model, 'pelvis', 'iliocrestale_r', osim.Vec3(-0.05, 0.082, 0.11))
+    add_station(model, 'pelvis', 'iliocrestale_l', osim.Vec3(-0.05, 0.082, -0.11))
+
+    # tibia
+    add_station(model, 'tibia_r', 'lateral_malleolus_r', osim.Vec3(-0.005, -0.41, 0.042))
+    add_station(model, 'tibia_l', 'lateral_malleolus_l', osim.Vec3(-0.005, -0.41, -0.042))
+    add_station(model, 'tibia_r', 'medial_malleolus_r', osim.Vec3(0.002, -0.38, -0.027))
+    add_station(model, 'tibia_l', 'medial_malleolus_l', osim.Vec3(0.002, -0.38, 0.027))
+
+    # foot
+    add_station(model, 'calcn_r', 'pternion_r', osim.Vec3(-0.004, 0.013, -0.003))
+    add_station(model, 'calcn_l', 'pternion_l', osim.Vec3(-0.004, 0.013, 0.003))
+    add_station(model, 'calcn_r', 'acropodion_r', osim.Vec3(0.25, -0.0027, -0.016))
+    add_station(model, 'calcn_l', 'acropodion_l', osim.Vec3(0.25, -0.0027, 0.016))
+    add_station(model, 'calcn_r', 'mtp1_r', osim.Vec3(0.141, 0.0, 0.047))
+    add_station(model, 'calcn_l', 'mtp1_l', osim.Vec3(0.141, 0.0, -0.047))
+    add_station(model, 'calcn_r', 'mtp5_r', osim.Vec3(0.185, 0.001, -0.0345))
+    add_station(model, 'calcn_l', 'mtp5_l', osim.Vec3(0.185, 0.001, 0.0345))
+
+    # Finalize and print
+    # ------------------
     model.finalizeConnections()
     model.setName('unscaled_generic')
+
+    model.updForceSet().clearAndDestroy()
+
+
+    model.initSystem()
+    model.updDisplayHints().set_show_stations(True)
+    osim.VisualizerUtilities.showModel(model)
+
     model.printToXML(generic_model_fpath)
