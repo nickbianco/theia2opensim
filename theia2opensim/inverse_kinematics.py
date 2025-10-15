@@ -43,13 +43,12 @@ def run_optimization(model, coordinate_indexes, frame_paths, positions, quaterni
     return sol
 
 
-def run_inverse_kinematics(scaled_model_path, trial_path, c3d_filename,
-                           offset_frame_map, weights, convergence_tolerance,
-                           finite_differences=False):
+def run_inverse_kinematics(model_path, trial_path, c3d_filename, offset_frame_map,
+                           weights, convergence_tolerance, finite_differences=False):
 
     # Load model
     # ----------
-    modelProcessor = osim.ModelProcessor(scaled_model_path)
+    modelProcessor = osim.ModelProcessor(model_path)
     modelProcessor.append(osim.ModOpRemoveMuscles())
     model = modelProcessor.process()
     state = model.initSystem()

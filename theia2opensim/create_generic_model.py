@@ -30,7 +30,7 @@ def add_station(model, body_name, station_name, location):
     body = bodyset.get(body_name)
     station = osim.Station(body, location)
     station.setName(station_name)
-    body.addComponent(station)
+    model.addComponent(station)
 
 
 def create_generic_model(model_fpath, offset_frame_map, torso_frame_offset,
@@ -130,20 +130,31 @@ def create_generic_model(model_fpath, offset_frame_map, torso_frame_offset,
     add_station(model, 'torso', 'euryon_l', osim.Vec3(-0.0015, 0.595, -0.069))
     add_station(model, 'torso', 'glabella', osim.Vec3(0.08, 0.58, 0.0))
     add_station(model, 'torso', 'opisthocranion', osim.Vec3(-0.08, 0.56, 0.0))
+    add_station(model, 'torso', 'vertex', osim.Vec3(0.0, 0.65, 0.0))
 
     # torso
-    add_station(model, 'torso', 'acromion_r', osim.Vec3(0.0, 0.41, 0.13))
-    add_station(model, 'torso', 'acromion_l', osim.Vec3(0.0, 0.41, -0.13))
+    add_station(model, 'torso', 'acromion_r', osim.Vec3(0.005, 0.4, 0.165))
+    add_station(model, 'torso', 'acromion_l', osim.Vec3(0.005, 0.4, -0.165))
+    add_station(model, 'torso', 'suprasternale', osim.Vec3(0.03, 0.365, 0.0))
+    add_station(model, 'torso', 'cervicale', osim.Vec3((-0.065, 0.415, 0.0)))
 
     # pelvis
     add_station(model, 'pelvis', 'iliocrestale_r', osim.Vec3(-0.05, 0.082, 0.11))
     add_station(model, 'pelvis', 'iliocrestale_l', osim.Vec3(-0.05, 0.082, -0.11))
+    add_station(model, 'pelvis', 'posterior_omphalion', osim.Vec3((-0.14, 0.11, 0.0)))
+    add_station(model, 'pelvis', 'anterior_omphalion', osim.Vec3((0.0, 0.11, 0.0)))
 
     # tibia
     add_station(model, 'tibia_r', 'lateral_malleolus_r', osim.Vec3(-0.005, -0.41, 0.042))
     add_station(model, 'tibia_l', 'lateral_malleolus_l', osim.Vec3(-0.005, -0.41, -0.042))
     add_station(model, 'tibia_r', 'medial_malleolus_r', osim.Vec3(0.002, -0.38, -0.027))
     add_station(model, 'tibia_l', 'medial_malleolus_l', osim.Vec3(0.002, -0.38, 0.027))
+    add_station(model, 'tibia_r', 'tibiale_r', osim.Vec3(-0.01, -0.035, -0.025))
+    add_station(model, 'tibia_l', 'tibiale_l', osim.Vec3(-0.01, -0.035, 0.025))
+
+    # femur
+    add_station(model, 'femur_r', 'trochanterion_r', osim.Vec3(-0.0165, 0, 0.05))
+    add_station(model, 'femur_l', 'trochanterion_l', osim.Vec3(-0.0165, 0, -0.05))
 
     # foot
     add_station(model, 'calcn_r', 'pternion_r', osim.Vec3(-0.004, 0.013, -0.003))
@@ -155,16 +166,16 @@ def create_generic_model(model_fpath, offset_frame_map, torso_frame_offset,
     add_station(model, 'calcn_r', 'mtp5_r', osim.Vec3(0.185, 0.001, -0.0345))
     add_station(model, 'calcn_l', 'mtp5_l', osim.Vec3(0.185, 0.001, 0.0345))
 
+    # arm
+    add_station(model, 'radius_r', 'radiale_r', osim.Vec3(0.0, -0.004, 0.006))
+    add_station(model, 'radius_l', 'radiale_l', osim.Vec3(0.0, -0.004, -0.006))
+    add_station(model, 'radius_r', 'stylion_r', osim.Vec3(0.0, -0.23, 0.03))
+    add_station(model, 'radius_l', 'stylion_l', osim.Vec3(0.0, -0.23, -0.03))
+    add_station(model, 'ulna_r', 'olecranon_r', osim.Vec3(-0.03, -0.001, 0.0))
+    add_station(model, 'ulna_l', 'olecranon_l', osim.Vec3(-0.03, -0.001, 0.0))
+
     # Finalize and print
     # ------------------
     model.finalizeConnections()
     model.setName('unscaled_generic')
-
-    model.updForceSet().clearAndDestroy()
-
-
-    model.initSystem()
-    model.updDisplayHints().set_show_stations(True)
-    osim.VisualizerUtilities.showModel(model)
-
     model.printToXML(generic_model_fpath)
