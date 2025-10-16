@@ -124,13 +124,13 @@ adjust_anthropometry(scaled_model_fpath, anthropometrics_fpath, adjusted_model_f
 # - orientation: quaternion distance of frame orientation errors (between [0, 1])
 # - smoothness: sum of squared differences in generalized coordinates between current
 #               and previous time step (in rad^2 or m^2)
-weights = {'position': 1.0,
-           'orientation': 1.0,
+weights = {'position': 2.0,
+           'orientation': 5.0,
            'smoothness': 0.5}
 
 # Convergence tolerance: controls various IPOPT tolerances (e.g., primal and dual
 # feasibility, acceptable tol, etc.).
-convergence_tolerance = 1e-3
+convergence_tolerance = 1e-4
 
 # Whether or not to compute the tracking cost derivative using finite differences. By
 # default, we set this to False to use an analytical derivatives computed from Simbody,

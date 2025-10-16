@@ -255,54 +255,54 @@ class MultivariateNormal:
 
         return percentile
 
-    @classmethod
-    def plot_variable_distribution(mvn, data_df, variable_name, bins=30):
-        """
-        Plot the fitted distribution versus actual data for a specific variable.
 
-        Parameters
-        ----------
-        mvn : MultivariateNormal
-            The fitted multivariate normal distribution
-        data_df : pandas.DataFrame
-            The original data
-        variable_name : str
-            Name of the variable to plot
-        bins : int, optional
-            Number of histogram bins (default: 30)
-        """
-        import matplotlib.pyplot as plt
+def plot_variable_distribution(mvn, data_df, variable_name, bins=30):
+    """
+    Plot the fitted distribution versus actual data for a specific variable.
 
-        # Check if variable exists in the distribution
-        if variable_name not in mvn.variables:
-            raise ValueError(f"Variable '{variable_name}' not found in the distribution")
+    Parameters
+    ----------
+    mvn : MultivariateNormal
+        The fitted multivariate normal distribution
+    data_df : pandas.DataFrame
+        The original data
+    variable_name : str
+        Name of the variable to plot
+    bins : int, optional
+        Number of histogram bins (default: 30)
+    """
+    import matplotlib.pyplot as plt
 
-        # Get index of the variable
-        var_idx = mvn.variables.index(variable_name)
+    # Check if variable exists in the distribution
+    if variable_name not in mvn.variables:
+        raise ValueError(f"Variable '{variable_name}' not found in the distribution")
 
-        # Get mean and standard deviation for this variable
-        var_mean = mvn.mean[var_idx]
-        var_std = np.sqrt(mvn.cov[var_idx, var_idx])
+    # Get index of the variable
+    var_idx = mvn.variables.index(variable_name)
 
-        # Create a normal distribution for this variable
-        var_dist = norm(var_mean, var_std)
+    # Get mean and standard deviation for this variable
+    var_mean = mvn.mean[var_idx]
+    var_std = np.sqrt(mvn.cov[var_idx, var_idx])
 
-        # Plot histogram of actual data
-        plt.figure(figsize=(10, 6))
-        print(data_df[variable_name])
-        plt.hist(data_df[variable_name], bins=bins, density=True, alpha=0.6,
-                label='Actual data', color='skyblue')
+    # Create a normal distribution for this variable
+    var_dist = norm(var_mean, var_std)
 
-        # Plot the fitted distribution
-        x = np.linspace(var_mean - 4*var_std, var_mean + 4*var_std, 1000)
-        plt.plot(x, var_dist.pdf(x), 'r-', lw=2, label='Fitted normal distribution')
+    # Plot histogram of actual data
+    plt.figure(figsize=(10, 6))
+    print(data_df[variable_name])
+    plt.hist(data_df[variable_name], bins=bins, density=True, alpha=0.6,
+            label='Actual data', color='skyblue')
 
-        plt.title(f'Distribution of {variable_name}')
-        plt.xlabel(variable_name)
-        plt.ylabel('Density')
-        plt.legend()
-        plt.grid(True, alpha=0.3)
-        plt.show()
+    # Plot the fitted distribution
+    x = np.linspace(var_mean - 4*var_std, var_mean + 4*var_std, 1000)
+    plt.plot(x, var_dist.pdf(x), 'r-', lw=2, label='Fitted normal distribution')
+
+    plt.title(f'Distribution of {variable_name}')
+    plt.xlabel(variable_name)
+    plt.ylabel('Density')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.show()
 
 # Path to your CSV file
 csv_fpath = os.path.join('..', 'anthropometrics', 'ANSUR_II_BOTH_Public.csv')
@@ -327,23 +327,23 @@ columns_to_use = ['biacromialbreadth',      # torso width [measure]
                   'trochanterionheight',    # foot + tibia + femur height [measure]
                   'waistbacklength',        # torso height [measure]
                   'waistdepth']             # pelvis depth [draw]
-# df = df[columns_to_use]
-# mvn = MultivariateNormal.from_data(df.columns.tolist(), df.values)
+df = df[columns_to_use]
+mvn = MultivariateNormal.from_data(df.columns.tolist(), df.values)
 
-# # Create values dict from mean values
-# values = dict()
-# for i, var in enumerate(mvn.variables):
-#     values[var] = mvn.get_mean()[i]
+# Create values dict from mean values
+values = dict()
+for i, var in enumerate(mvn.variables):
+    values[var] = mvn.get_mean()[i]
 
-# mvn.get_pdf(values)
-# mvn.get_cdf(values)
+mvn.get_pdf(values)
+mvn.get_cdf(values)
 
-import pdb; pdb.set_trace()
+# import pdb; pdb.set_trace()
 
 
 
 # Example usage:
-# plot_variable_distribution(mvn, df, 'stature')
+plot_variable_distribution(mvn, df, 'biacromialbreadth')
 # plot_variable_distribution(mvn, df, 'bicristalbreadth')
 
 

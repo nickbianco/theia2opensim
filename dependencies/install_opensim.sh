@@ -8,7 +8,7 @@ DEBUG_TYPE="Release"
 NUM_JOBS=24
 MOCO="off"
 ORG="opensim-org"
-BRANCH="station_visualization"
+BRANCH="main"
 GENERATOR="Unix Makefiles"
 PYTHON_ROOT_DIR=$1
 
