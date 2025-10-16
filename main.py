@@ -4,6 +4,7 @@ from copy import deepcopy
 from theia2opensim.import_data import import_data
 from theia2opensim.create_generic_model import create_generic_model
 from theia2opensim.scale_model import scale_model
+from theia2opensim.adjust_anthropometry import adjust_anthropometry
 from theia2opensim.inverse_kinematics import run_inverse_kinematics
 
 # Step 1: Import data.
@@ -98,49 +99,38 @@ scale_rules['toes_r'] = deepcopy(scale_rules['calcn_r'])
 scale_rules['talus_l'] = deepcopy(scale_rules['calcn_l'])
 scale_rules['toes_l'] = deepcopy(scale_rules['calcn_l'])
 
-# Whether or not to average the scale factors for left and right segments to enforce
-# symmetry.
-enforce_symmetry = True
-
-# If the medio-lateral dimension of the pelvis is scaled directly based on the distance
-# between the left and right hip joint centers as estimated from Theia data, the hip
-# becomes unrealistically wide. For now, to avoid this issue, we shift both hip joint
-# centers laterally relative to the pelvis center by this offset before computing the
-# scale factor for the pelvis segment.
-#
-# This is definitely kludgy (e.g., the greater trochanter of the femur geometry is no
-# longer in the hip socket), but it is better than a super wide pelvis, and it seems
-# like Visual 3D might be applying a similar offset.
-#
-# TODO: replace this offset with a better estimate (e.g., from the ANSUR II dataset).
-hip_joint_offset = 0.03
-
 # Use the Model::scale() method to scale the model. The scaled model is saved to the
 # data trial folder.
 trial_path = os.path.join('data', trial_relpath)
 c3d_filename = 'pose_0.c3d'
 scaled_model_name = 'jump_1_scaled'
 scale_model(generic_model_fpath, trial_path, c3d_filename, offset_frame_map,
-            scale_rules, enforce_symmetry, hip_joint_offset, scaled_model_name)
+            scale_rules, scaled_model_name)
 
-# Step 4: Inverse kinematics.
+# Step 4: Adjust anthropometry.
+# ------------------------------
+scaled_model_fpath = os.path.join(trial_path, f'{scaled_model_name}.osim')
+anthropometrics_fpath = os.path.join('anthropometrics', 'ANSUR_II_FEMALE_Public.csv')
+adjusted_model_fpath = os.path.join(trial_path, f'{scaled_model_name}_adjusted.osim')
+adjust_anthropometry(scaled_model_fpath, anthropometrics_fpath, adjusted_model_fpath)
+
+# Step 5: Inverse kinematics.
 # ---------------------------
 # Using CasADi (https://web.casadi.org/), create a custom inverse kinematics problem
 # that minimizes the error between model and Theia frame positions and orientations.
-scaled_model_path = os.path.join('data', trial_relpath, 'jump_1_scaled.osim')
 
 # Cost function weights.
 # - position: squared norm of frame position errors (in m^2)
 # - orientation: quaternion distance of frame orientation errors (between [0, 1])
 # - smoothness: sum of squared differences in generalized coordinates between current
 #               and previous time step (in rad^2 or m^2)
-weights = {'position': 1.0,
-           'orientation': 1.0,
+weights = {'position': 2.0,
+           'orientation': 5.0,
            'smoothness': 0.5}
 
 # Convergence tolerance: controls various IPOPT tolerances (e.g., primal and dual
 # feasibility, acceptable tol, etc.).
-convergence_tolerance = 1e-3
+convergence_tolerance = 1e-4
 
 # Whether or not to compute the tracking cost derivative using finite differences. By
 # default, we set this to False to use an analytical derivatives computed from Simbody,
@@ -149,7 +139,7 @@ finite_differences = False
 
 # Run inverse kinematics.
 start_time = time.time()
-run_inverse_kinematics(scaled_model_path, trial_path, c3d_filename, offset_frame_map,
+run_inverse_kinematics(adjusted_model_fpath, trial_path, c3d_filename, offset_frame_map,
                        weights, convergence_tolerance,
                        finite_differences=finite_differences)
 end_time = time.time()
