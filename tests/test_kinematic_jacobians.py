@@ -2,7 +2,6 @@ import unittest
 import numpy as np
 import casadi as ca
 import opensim as osim
-from abc import ABC, abstractmethod
 from theia2opensim.callbacks import Callback, JacobianCallback, TrackingCostCallback, \
                                     TrackingCostJacobianCallback
 from theia2opensim.utilities import get_coordinate_indexes

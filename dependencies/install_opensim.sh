@@ -7,8 +7,8 @@ set -e
 DEBUG_TYPE="Release"
 NUM_JOBS=24
 MOCO="off"
-ORG="opensim-org"
-BRANCH="main"
+ORG="nickbianco"
+BRANCH="mobilizer_transform"
 GENERATOR="Unix Makefiles"
 PYTHON_ROOT_DIR=$1
 
