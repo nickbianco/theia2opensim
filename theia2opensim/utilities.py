@@ -448,7 +448,8 @@ def get_coordinate_indexes(model, skip_dependent_coordinates=True):
 
 
 def get_ipopt_options(convergence_tolerance=1e-4):
-    """Get a dictionary of common IPOPT options for use with CasADi's nlpsolver.
+    """
+    Get a dictionary of common IPOPT options for use with CasADi's nlpsolver.
     """
     ipopt_options = {}
     ipopt_options['hessian_approximation'] = 'limited-memory'
@@ -463,3 +464,148 @@ def get_ipopt_options(convergence_tolerance=1e-4):
     ipopt_options['print_level'] = 0
 
     return ipopt_options
+
+
+def rotation_to_numpy(rotation):
+    """
+    Convert a SimTK rotation to a numpy array.
+    """
+    rot = np.zeros((3, 3))
+    rot[0,0] = rotation.get(0, 0)
+    rot[0,1] = rotation.get(0, 1)
+    rot[0,2] = rotation.get(0, 2)
+    rot[1,0] = rotation.get(1, 0)
+    rot[1,1] = rotation.get(1, 1)
+    rot[1,2] = rotation.get(1, 2)
+    rot[2,0] = rotation.get(2, 0)
+    rot[2,1] = rotation.get(2, 1)
+    rot[2,2] = rotation.get(2, 2)
+    return rot
+
+
+def find_joint_from_child(model, child_frame_name):
+    """
+    Find a joint from a child frame name.
+    """
+    jointset = model.getJointSet()
+    for ijoint in range(jointset.getSize()):
+        joint = jointset.get(ijoint)
+        child_frame = joint.getChildFrame().findBaseFrame()
+        if child_frame.getName() == child_frame_name:
+            return joint
+    return None
+
+
+def calc_scaled_frame_position(model, state, scales, frame):
+    """
+    Calculate the position of a frame in the ground reference frame as a function
+    of the scale factors.
+
+    Parameters
+    ----------
+    model : osim.Model
+        The model to calculate the frame position for.
+    state : osim.State
+        The state to calculate the frame position for.
+    scales : dict
+        A dictionary of scale factors for the body.
+    """
+
+    frame_position = np.zeros(3)
+
+    # Contribution from the frame offset in the child body.
+    frame_position_in_base = frame.findTransformInBaseFrame().p().to_numpy()
+    child = osim.PhysicalFrame.safeDownCast(frame.findBaseFrame())
+    frame_position += np.dot(
+        rotation_to_numpy(child.getRotationInGround(state)),
+        np.multiply(frame_position_in_base, scales[child.getName()]))
+
+    while child.getName() != 'ground':
+        joint = find_joint_from_child(model, child.getName())
+        child_offset = osim.PhysicalFrame.safeDownCast(joint.getChildFrame())
+
+        # Contribution from the child offset frame.
+        frame_position += np.dot(
+            rotation_to_numpy(child.getRotationInGround(state)),
+            np.multiply(-child_offset.findTransformInBaseFrame().p().to_numpy(),
+                        scales[child.getName()]))
+
+        # Contribution from the mobilizer.
+        parent_offset = osim.PhysicalFrame.safeDownCast(joint.getParentFrame())
+        parent = osim.PhysicalFrame.safeDownCast(parent_offset.findBaseFrame())
+        mobilizer_translation = child.getMobilizerTransform(state).p().to_numpy()
+        frame_position += np.dot(
+                rotation_to_numpy(parent_offset.getRotationInGround(state)),
+                np.multiply(mobilizer_translation, scales[parent.getName()]))
+
+        # Contribution from the parent offset frame.
+        frame_position += np.dot(
+            rotation_to_numpy(parent.getRotationInGround(state)),
+            np.multiply(parent_offset.findTransformInBaseFrame().p().to_numpy(),
+                        scales[parent.getName()]))
+
+        # Update the child frame.
+        child = parent
+
+    return frame_position
+
+
+def calc_scaled_frame_position_jacobian(model, state, scales, frame):
+    """Calculate the Jacobian of the position of a frame in the ground reference frame
+    as a function of the scale factors.
+
+    Parameters
+    ----------
+    model : osim.Model
+        The model to calculate the frame position Jacobian for.
+    state : osim.State
+        The state to calculate the frame position Jacobian for.
+    scales : dict
+        A dictionary of scale factors for the body.
+    frame : osim.PhysicalFrame
+        The frame to calculate the position Jacobian for.
+
+    Returns
+    -------
+    dict
+        A dictionary of the Jacobian of the position of the frame in the ground
+        reference frame as a function of the scale factors.
+    """
+
+    frame_position_jacobian = dict()
+    for body_name in scales:
+        frame_position_jacobian[body_name] = np.zeros((3, 3))
+
+    # Contribution from the frame offset in the child body.
+    frame_position_in_base = frame.findTransformInBaseFrame().p().to_numpy()
+    child = osim.PhysicalFrame.safeDownCast(frame.findBaseFrame())
+    frame_position_jacobian[child.getName()] += np.dot(
+        rotation_to_numpy(child.getRotationInGround(state)),
+        np.multiply(np.eye(3), frame_position_in_base))
+
+    while child.getName() != 'ground':
+        joint = find_joint_from_child(model, child.getName())
+        child_offset = osim.PhysicalFrame.safeDownCast(joint.getChildFrame())
+
+        # Contribution from the child offset frame.
+        frame_position_jacobian[child.getName()] += np.dot(
+            rotation_to_numpy(child.getRotationInGround(state)),
+            np.multiply(np.eye(3), -child_offset.findTransformInBaseFrame().p().to_numpy()))
+
+        # Contribution from the mobilizer.
+        parent_offset = osim.PhysicalFrame.safeDownCast(joint.getParentFrame())
+        parent = osim.PhysicalFrame.safeDownCast(parent_offset.findBaseFrame())
+        mobilizer_translation = child.getMobilizerTransform(state).p().to_numpy()
+        frame_position_jacobian[parent.getName()] += np.dot(
+            rotation_to_numpy(parent_offset.getRotationInGround(state)),
+            np.multiply(np.eye(3), mobilizer_translation))
+
+        # Contribution from the parent offset frame.
+        frame_position_jacobian[parent.getName()] += np.dot(
+            rotation_to_numpy(parent.getRotationInGround(state)),
+            np.multiply(np.eye(3), parent_offset.findTransformInBaseFrame().p().to_numpy()))
+
+        # Update the child frame.
+        child = parent
+
+    return frame_position_jacobian

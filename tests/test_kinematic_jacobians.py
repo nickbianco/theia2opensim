@@ -9,9 +9,10 @@ from theia2opensim.utilities import get_coordinate_indexes
 # Position Callbacks
 # ------------------
 class PositionMixin:
-    def _init_position_components(self, model, body_name):
-        self.body = model.getBodySet().get(body_name)
-        self.mobod_index = self.body.getMobilizedBodyIndex()
+    def _init_position_components(self, model, frame_path):
+        self.frame = osim.PhysicalFrame.safeDownCast(
+            model.getComponent(frame_path))
+        self.mobod_index = self.frame.getMobilizedBodyIndex()
 
     def _get_num_inputs(self):
         return len(self.coordinate_indexes)
@@ -21,25 +22,26 @@ class PositionMixin:
 
     def _eval(self, arg):
         self.apply_state(arg)
-        position = self.body.getPositionInGround(self.state).to_numpy()
+        position = self.frame.getPositionInGround(self.state).to_numpy()
         return [position]
 
 
 class PositionCallback(PositionMixin, Callback):
-    def __init__(self, name, model, coordinate_indexes, body_name, opts={}):
+    def __init__(self, name, model, coordinate_indexes, frame_path, opts={}):
         Callback.__init__(self, name, model, coordinate_indexes, opts)
-        self._init_position_components(model, body_name)
+        self._init_position_components(model, frame_path)
 
 
 class PositionJacobianCallback(PositionMixin, JacobianCallback):
-    def __init__(self, name, model, coordinate_indexes, body_name, opts={}):
+    def __init__(self, name, model, coordinate_indexes, frame_path, opts={}):
         JacobianCallback.__init__(self, name, model, coordinate_indexes, opts)
-        self._init_position_components(model, body_name)
+        self._init_position_components(model, frame_path)
 
     def _jac_eval(self, arg):
         self.apply_state(arg)
         matrix = osim.Matrix()
-        self.matter.calcStationJacobian(self.state, self.mobod_index, osim.Vec3(0),
+        station = self.frame.findTransformInBaseFrame().p()
+        self.matter.calcStationJacobian(self.state, self.mobod_index, osim.Vec3(station),
                                         matrix)
         return [matrix.to_numpy()[:, self.coordinate_indexes]]
 
@@ -262,16 +264,13 @@ class TestPositionJacobians(unittest.TestCase):
         coordinates_map = get_coordinate_indexes(model, skip_dependent_coordinates=True)
         coordinate_indexes = list(coordinates_map.values())
 
-        bodyset = model.getBodySet()
-        for ibody in range(bodyset.getSize()):
-            body = bodyset.get(ibody)
-            body_name = body.getName()
+        for frame_path in FRAME_PATHS:
 
             # Callback functions.
-            f_fd = PositionCallback('f_fd', model, coordinate_indexes, body_name,
+            f_fd = PositionCallback('f_fd', model, coordinate_indexes, frame_path,
                                     {"enable_fd": True})
             f_jac = PositionJacobianCallback('f_jac', model, coordinate_indexes,
-                                             body_name)
+                                             frame_path)
 
             # Symbolic inputs.
             x = ca.SX.sym('x', len(coordinate_indexes))

@@ -3,113 +3,8 @@ import numpy as np
 import casadi as ca
 import opensim as osim
 from abc import ABC, abstractmethod
-
-# Helper Functions
-# ----------------
-def rotation_to_numpy(rotation):
-    rot = np.zeros((3, 3))
-    rot[0,0] = rotation.get(0, 0)
-    rot[0,1] = rotation.get(0, 1)
-    rot[0,2] = rotation.get(0, 2)
-    rot[1,0] = rotation.get(1, 0)
-    rot[1,1] = rotation.get(1, 1)
-    rot[1,2] = rotation.get(1, 2)
-    rot[2,0] = rotation.get(2, 0)
-    rot[2,1] = rotation.get(2, 1)
-    rot[2,2] = rotation.get(2, 2)
-    return rot
-
-
-def find_joint_from_child(model, child_frame_name):
-    jointset = model.getJointSet()
-    for ijoint in range(jointset.getSize()):
-        joint = jointset.get(ijoint)
-        child_frame = joint.getChildFrame().findBaseFrame()
-        if child_frame.getName() == child_frame_name:
-            return joint
-    return None
-
-
-def calc_scaled_frame_position(model, state, scales, frame):
-
-    frame_position = np.zeros(3)
-
-    # Contribution from the frame offset in the child body.
-    frame_position_in_base = frame.findTransformInBaseFrame().p().to_numpy()
-    child = osim.PhysicalFrame.safeDownCast(frame.findBaseFrame())
-    frame_position += np.dot(
-        rotation_to_numpy(child.getRotationInGround(state)),
-        np.multiply(frame_position_in_base, scales[child.getName()]))
-
-    while child.getName() != 'ground':
-        joint = find_joint_from_child(model, child.getName())
-        child_offset = osim.PhysicalFrame.safeDownCast(joint.getChildFrame())
-
-        # Contribution from the child offset frame.
-        frame_position += np.dot(
-            rotation_to_numpy(child.getRotationInGround(state)),
-            np.multiply(-child_offset.findTransformInBaseFrame().p().to_numpy(),
-                        scales[child.getName()]))
-
-        # Contribution from the mobilizer.
-        parent_offset = osim.PhysicalFrame.safeDownCast(joint.getParentFrame())
-        parent = osim.PhysicalFrame.safeDownCast(parent_offset.findBaseFrame())
-        mobilizer_translation = child.getMobilizerTransform(state).p().to_numpy()
-        frame_position += np.dot(
-                rotation_to_numpy(parent_offset.getRotationInGround(state)),
-                np.multiply(mobilizer_translation, scales[parent.getName()]))
-
-        # Contribution from the parent offset frame.
-        frame_position += np.dot(
-            rotation_to_numpy(parent.getRotationInGround(state)),
-            np.multiply(parent_offset.findTransformInBaseFrame().p().to_numpy(),
-                        scales[parent.getName()]))
-
-        # Update the child frame.
-        child = parent
-
-    return frame_position
-
-
-def calc_scaled_frame_position_jacobian(model, state, scales, frame):
-
-    frame_position_jacobian = dict()
-    for body_name in scales:
-        frame_position_jacobian[body_name] = np.zeros((3, 3))
-
-    # Contribution from the frame offset in the child body.
-    frame_position_in_base = frame.findTransformInBaseFrame().p().to_numpy()
-    child = osim.PhysicalFrame.safeDownCast(frame.findBaseFrame())
-    frame_position_jacobian[child.getName()] += np.dot(
-        rotation_to_numpy(child.getRotationInGround(state)),
-        np.multiply(np.eye(3), frame_position_in_base))
-
-    while child.getName() != 'ground':
-        joint = find_joint_from_child(model, child.getName())
-        child_offset = osim.PhysicalFrame.safeDownCast(joint.getChildFrame())
-
-        # Contribution from the child offset frame.
-        frame_position_jacobian[child.getName()] += np.dot(
-            rotation_to_numpy(child.getRotationInGround(state)),
-            np.multiply(np.eye(3), -child_offset.findTransformInBaseFrame().p().to_numpy()))
-
-        # Contribution from the mobilizer.
-        parent_offset = osim.PhysicalFrame.safeDownCast(joint.getParentFrame())
-        parent = osim.PhysicalFrame.safeDownCast(parent_offset.findBaseFrame())
-        mobilizer_translation = child.getMobilizerTransform(state).p().to_numpy()
-        frame_position_jacobian[parent.getName()] += np.dot(
-            rotation_to_numpy(parent_offset.getRotationInGround(state)),
-            np.multiply(np.eye(3), mobilizer_translation))
-
-        # Contribution from the parent offset frame.
-        frame_position_jacobian[parent.getName()] += np.dot(
-            rotation_to_numpy(parent.getRotationInGround(state)),
-            np.multiply(np.eye(3), parent_offset.findTransformInBaseFrame().p().to_numpy()))
-
-        # Update the child frame.
-        child = parent
-
-    return frame_position_jacobian
+from theia2opensim.utilities import calc_scaled_frame_position, \
+                                    calc_scaled_frame_position_jacobian
 
 # Base Callback Classes
 # ---------------------
@@ -229,7 +124,6 @@ class ScaledPositionJacobianCallback(ScaledPositionMixin, ScaleJacobianCallback)
         scales = self._expand_scale_factors(arg)
         jacobian_dict = calc_scaled_frame_position_jacobian(self.model,
                 self.state, scales, self.frame)
-        # Remove key "ground" from the dictionary.
         del jacobian_dict['ground']
 
         jacobian = np.zeros((3, 3*len(jacobian_dict.keys())))
@@ -244,14 +138,12 @@ class ScaledPositionJacobianCallback(ScaledPositionMixin, ScaleJacobianCallback)
 # ----------
 # This needs to be generated via 'create_generic_model.py' script first.
 MODEL_FPATH = 'unscaled_generic.osim'
-FRAME_PATHS = [
-               '/bodyset/pelvis/pelvis',
+FRAME_PATHS = ['/bodyset/pelvis/pelvis',
                '/bodyset/torso/torso',
                '/jointset/hip_r/femur_r_offset/r_thigh',
                '/jointset/walker_knee_r/tibia_r_offset/r_shank',
                '/jointset/ankle_r/talus_r_offset/r_foot',
-               '/jointset/mtp_r/toes_r_offset/r_toes'
-               ]
+               '/jointset/mtp_r/toes_r_offset/r_toes']
 
 class TestCalculateScaledFramePosition(unittest.TestCase):
     def test_calculate_scaled_frame_position(self):
