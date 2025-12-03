@@ -73,8 +73,8 @@ class ScaledPositionJacobianCallback(ScaledPositionMixin, JacobianCallback):
 
         # TODO: this is needed for the kinematic Jacobian to be correct, but
         # we shouldn't need a hacky correction factor here.
-        kinematic_jacobian *= 2.0
-        kinematic_jacobian[:, 3:6] *= 0.5
+        # kinematic_jacobian *= 2.0
+        # kinematic_jacobian[:, 3:6] *= 0.5
 
         # Scale Jacobian
         scales = self._expand_scale_factors(arg)
@@ -95,9 +95,9 @@ class ScaledPositionJacobianCallback(ScaledPositionMixin, JacobianCallback):
 # This needs to be generated via 'create_generic_model.py' script first.
 MODEL_FPATH = 'unscaled_generic.osim'
 FRAME_PATHS = [
-               '/bodyset/pelvis/pelvis',
-               '/bodyset/torso/torso',
-               '/jointset/hip_r/femur_r_offset/r_thigh',
+            #    '/bodyset/pelvis/pelvis',
+            #    '/bodyset/torso/torso',
+            #    '/jointset/hip_r/femur_r_offset/r_thigh',
                '/jointset/walker_knee_r/tibia_r_offset/r_shank',
                '/jointset/ankle_r/talus_r_offset/r_foot',
                '/jointset/mtp_r/toes_r_offset/r_toes',

@@ -609,3 +609,88 @@ def calc_scaled_frame_position_jacobian(model, state, scales, frame):
         child = parent
 
     return frame_position_jacobian
+
+
+def calc_scaled_frame_position_kinematic_jacobian(model, state, scales, frame, coordinate_indexes, matter):
+    """Calculate the kinematic Jacobian of the scaled frame position with respect to coordinates.
+
+    This computes the derivative of the scaled frame position w.r.t. coordinates, accounting
+    for how the scale factors affect the derivative through the kinematic chain.
+
+    The scaled position is computed as a sum of terms, each of which involves rotating a
+    scaled offset. When computing the derivative w.r.t. coordinates, we need to account for
+    the scale factors applied to each offset.
+
+    Parameters
+    ----------
+    model : osim.Model
+        The model to calculate the frame position Jacobian for.
+    state : osim.State
+        The state to calculate the frame position Jacobian for.
+    scales : dict
+        A dictionary of scale factors for the body.
+    frame : osim.PhysicalFrame
+        The frame to calculate the position Jacobian for.
+    coordinate_indexes : list
+        List of coordinate indexes to compute the Jacobian for.
+    matter : osim.MatterSubsystem
+        The matter subsystem for computing Jacobians.
+
+    Returns
+    -------
+    np.ndarray
+        A (3, len(coordinate_indexes)) array representing the kinematic Jacobian.
+    """
+
+    kinematic_jacobian = np.zeros((3, len(coordinate_indexes)))
+
+    # Contribution from the frame offset in the child body.
+    frame_position_in_base = frame.findTransformInBaseFrame().p().to_numpy()
+    child = osim.PhysicalFrame.safeDownCast(frame.findBaseFrame())
+    scaled_station = np.multiply(frame_position_in_base, scales[child.getName()])
+
+    matrix = osim.Matrix()
+    matter.calcStationJacobian(state, child.getMobilizedBodyIndex(),
+                               osim.Vec3(scaled_station[0], scaled_station[1], scaled_station[2]),
+                               matrix)
+    kinematic_jacobian += matrix.to_numpy()[:, coordinate_indexes]
+
+    while child.getName() != 'ground':
+        joint = find_joint_from_child(model, child.getName())
+        if joint is None:
+            break
+        child_offset = osim.PhysicalFrame.safeDownCast(joint.getChildFrame())
+
+        # Contribution from the child offset frame.
+        child_offset_in_base = -child_offset.findTransformInBaseFrame().p().to_numpy()
+        scaled_station = np.multiply(child_offset_in_base, scales[child.getName()])
+        matrix = osim.Matrix()
+        matter.calcStationJacobian(state, child.getMobilizedBodyIndex(),
+                                   osim.Vec3(scaled_station[0], scaled_station[1], scaled_station[2]),
+                                   matrix)
+        kinematic_jacobian += matrix.to_numpy()[:, coordinate_indexes]
+
+        # Contribution from the mobilizer.
+        parent_offset = osim.PhysicalFrame.safeDownCast(joint.getParentFrame())
+        parent = osim.PhysicalFrame.safeDownCast(parent_offset.findBaseFrame())
+        mobilizer_translation = child.getMobilizerTransform(state).p().to_numpy()
+        scaled_station = np.multiply(mobilizer_translation, scales[parent.getName()])
+        matrix = osim.Matrix()
+        matter.calcStationJacobian(state, parent_offset.getMobilizedBodyIndex(),
+                                   osim.Vec3(scaled_station[0], scaled_station[1], scaled_station[2]),
+                                   matrix)
+        kinematic_jacobian += matrix.to_numpy()[:, coordinate_indexes]
+
+        # Contribution from the parent offset frame.
+        parent_offset_in_base = parent_offset.findTransformInBaseFrame().p().to_numpy()
+        scaled_station = np.multiply(parent_offset_in_base, scales[parent.getName()])
+        matrix = osim.Matrix()
+        matter.calcStationJacobian(state, parent.getMobilizedBodyIndex(),
+                                   osim.Vec3(scaled_station[0], scaled_station[1], scaled_station[2]),
+                                   matrix)
+        kinematic_jacobian += matrix.to_numpy()[:, coordinate_indexes]
+
+        # Update the child frame.
+        child = parent
+
+    return kinematic_jacobian
