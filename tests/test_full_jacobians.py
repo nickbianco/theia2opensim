@@ -95,9 +95,9 @@ class ScaledPositionJacobianCallback(ScaledPositionMixin, JacobianCallback):
 # This needs to be generated via 'create_generic_model.py' script first.
 MODEL_FPATH = 'unscaled_generic.osim'
 FRAME_PATHS = [
-            #    '/bodyset/pelvis/pelvis',
-            #    '/bodyset/torso/torso',
-            #    '/jointset/hip_r/femur_r_offset/r_thigh',
+               '/bodyset/pelvis/pelvis',
+               '/bodyset/torso/torso',
+               '/jointset/hip_r/femur_r_offset/r_thigh',
                '/jointset/walker_knee_r/tibia_r_offset/r_shank',
                '/jointset/ankle_r/talus_r_offset/r_foot',
                '/jointset/mtp_r/toes_r_offset/r_toes',
@@ -139,3 +139,73 @@ class TestBodyScaleJacobians(unittest.TestCase):
 
             # Test that the two Jacobians are equivalent.
             self.assertTrue(np.allclose(J_jac(2).full(), J_fd(2).full(), atol=1e-6))
+
+
+class TestCompareScaledAndUnscaledJacobians(unittest.TestCase):
+    def test_compare_scaled_and_unscaled_jacobians(self):
+
+        # Frame path to test.
+        frame_path = FRAME_PATHS[1]
+
+        # Create scale factors.
+        scales = dict()
+        scales['ground'] = np.ones(3) # Ground is not scaled.
+        scales['pelvis'] = np.array([1.1, 1.2, 1.3])
+        scales['femur_r'] = np.array([1.4, 1.5, 1.6])
+        scales['tibia_r'] = np.array([1.7, 1.8, 1.9])
+
+        def calc_unscaled_jacobian():
+            model = osim.Model(MODEL_FPATH)
+            state = model.initSystem()
+            matter = model.getMatterSubsystem()
+            frame = osim.PhysicalFrame.safeDownCast(
+                model.getComponent(frame_path))
+            mobod_index = frame.getMobilizedBodyIndex()
+
+            matrix = osim.Matrix()
+            station = frame.findTransformInBaseFrame().p()
+            matter.calcSystemJacobian(state, matrix)
+            jacobian = matrix.to_numpy()
+
+            return jacobian
+
+        def calc_scaled_jacobian():
+            model = osim.Model(MODEL_FPATH)
+            state = model.initSystem()
+
+            # Create a scale for the right femur.
+            scale_set = osim.ScaleSet()
+            for body_name, scale_factors in scales.items():
+                scale = osim.Scale()
+                scale.setSegmentName(body_name)
+                scale.setScaleFactors(
+                    osim.Vec3(scale_factors[0], scale_factors[1], scale_factors[2]))
+                scale_set.cloneAndAppend(scale)
+
+            model.scale(state, scale_set, True)
+
+            matter = model.getMatterSubsystem()
+            frame = osim.PhysicalFrame.safeDownCast(
+                model.getComponent(frame_path))
+            mobod_index = frame.getMobilizedBodyIndex()
+
+            matrix = osim.Matrix()
+            station = frame.findTransformInBaseFrame().p()
+            matter.calcSystemJacobian(state, matrix)
+            jacobian = matrix.to_numpy()
+
+            return jacobian
+
+        unscaled_jacobian = calc_unscaled_jacobian()
+        scaled_jacobian = calc_scaled_jacobian()
+        ratio = scaled_jacobian / unscaled_jacobian
+
+        # print non-nan values of ratio
+        print(ratio[~np.isnan(ratio)])
+        import pdb; pdb.set_trace()
+
+        # print(unscaled_jacobian)
+        # print(scaled_jacobian)
+        # print(ratio)
+
+        self.assertTrue(np.allclose(unscaled_jacobian, scaled_jacobian, atol=1e-6))
