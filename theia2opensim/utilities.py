@@ -11,11 +11,11 @@ class C3D:
 
         # This is a Y-Z space-fixed rotation needed to convert data collected from Theia
         # to OpenSim's ground reference frame convention (X forward, Y up, Z right).
-        data_rotation = osim.Rotation()
-        data_rotation.setRotationFromTwoAnglesTwoAxes(1, # space-fixed
+        osim_rotation = osim.Rotation()
+        osim_rotation.setRotationFromTwoAnglesTwoAxes(1, # space-fixed
                 -0.5*np.pi, osim.CoordinateAxis(1), # Y rotation
                 -0.5*np.pi, osim.CoordinateAxis(2)) # Z rotation
-        self.data_rotation = data_rotation
+        self.osim_rotation = osim_rotation
 
         # This is an additional body-fixed rotation that effectively swaps the axes of
         # the rotations collected from Theia to match OpenSim's ground reference frame
@@ -73,7 +73,7 @@ class C3D:
             for ilabel, label in enumerate(labels):
                 position = data[:, 3, ilabel, iframe] / 1000.0  # mm to m
                 row[ilabel] = osim.Vec3(position[0], position[1], position[2])
-                row[ilabel] = self.data_rotation.multiply(row[ilabel])
+                row[ilabel] = self.osim_rotation.multiply(row[ilabel])
 
             table.appendRow(times[iframe], row)
 
@@ -97,10 +97,17 @@ class C3D:
             row = osim.RowVectorQuaternion(len(labels), osim.Quaternion())
             for ilabel, label in enumerate(labels):
                 rot = data[:3, :3, ilabel, iframe]
-                mat33 = osim.Mat33(rot[0,0], rot[0,1], rot[0,2],
-                                   rot[1,0], rot[1,1], rot[1,2],
-                                   rot[2,0], rot[2,1], rot[2,2])
-                rotation = self.data_rotation.multiply(osim.Rotation(mat33))
+                data_rotation = osim.Rotation()
+                data_rotation.set(0,0, rot[0,0])
+                data_rotation.set(1,0, rot[1,0])
+                data_rotation.set(2,0, rot[2,0])
+                data_rotation.set(0,1, rot[0,1])
+                data_rotation.set(1,1, rot[1,1])
+                data_rotation.set(2,1, rot[2,1])
+                data_rotation.set(0,2, rot[0,2])
+                data_rotation.set(1,2, rot[1,2])
+                data_rotation.set(2,2, rot[2,2])
+                rotation = self.osim_rotation.multiply(data_rotation)
                 rotation = rotation.multiply(self.frame_rotation)
 
                 # Store as a quaternion.
