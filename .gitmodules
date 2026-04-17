@@ -1,0 +1,3 @@
+[submodule "opensim-fitter"]
+	path = opensim-fitter
+	url = https://github.com/nickbianco/opensim-fitter.git

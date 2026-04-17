@@ -4,6 +4,8 @@ import opensim as osim
 
 def add_theia_frame(model, state, theia_frame_name, model_frame_path, offset):
     # Get the generic model frame and its transform in the ground frame.
+
+    print('model_frame_path: ', model_frame_path)
     frame = osim.PhysicalFrame.safeDownCast(model.updComponent(model_frame_path))
     T_GO = frame.getTransformInGround(state)
 
@@ -69,8 +71,9 @@ def create_generic_model(model_fpath, offset_frame_map, torso_frame_offset,
     zero_offset = osim.Vec3(0)
     for theia_frame_name in offset_frame_map.keys():
         if '/bodyset' not in offset_frame_map[theia_frame_name]:
-            add_theia_frame(model, state, theia_frame_name,
-                            offset_frame_map[theia_frame_name], zero_offset)
+            model_frame_path, _ = os.path.split(offset_frame_map[theia_frame_name])
+            add_theia_frame(model, state, theia_frame_name, model_frame_path,
+                            zero_offset)
 
     # Add pelvis frame.
     # ----------------
@@ -92,7 +95,8 @@ def create_generic_model(model_fpath, offset_frame_map, torso_frame_offset,
                          0.5 * (p_left[2] + p_right[2]))
 
     offset = ground.findStationLocationInAnotherFrame(state, p_pelvis, pelvis)
-    add_theia_frame(model, state, 'pelvis', offset_frame_map['pelvis'], offset)
+    model_frame_path, _ = os.path.split(offset_frame_map['pelvis'])
+    add_theia_frame(model, state, 'pelvis', model_frame_path, offset)
 
     # Add torso frame.
     # ----------------
@@ -115,7 +119,8 @@ def create_generic_model(model_fpath, offset_frame_map, torso_frame_offset,
 
     offset = ground.findStationLocationInAnotherFrame(state, p_torso, torso)
     offset[1] += torso_frame_offset
-    add_theia_frame(model, state, 'torso', offset_frame_map['torso'], offset)
+    model_frame_path, _ = os.path.split(offset_frame_map['torso'])
+    add_theia_frame(model, state, 'torso', model_frame_path, offset)
 
     # Remove the marker set.
     # ----------------------
