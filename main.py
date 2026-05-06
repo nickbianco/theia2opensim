@@ -2,12 +2,14 @@ import os
 import time
 import opensim as osim
 from copy import deepcopy
+import numpy as np
+import matplotlib.pyplot as plt
 from theia2opensim.import_data import import_data
 from theia2opensim.create_generic_model import create_generic_model
 from osimfit.data_sources import TheiaFrameSource
 from osimfit.scaling import PositionDataScaler, FrameMeasurement, Axis, ScaleFactor, \
                             AnthropometricScaler, AnthropometricMeasurement
-from osimfit.solvers import InverseKinematicsSolver
+from osimfit.solvers import InverseKinematicsSolver, SplineBasedInverseKinematicsSolver
 
 # Step 1: Import data.
 # --------------------
@@ -67,14 +69,41 @@ torso_frame_offset = 0.05 # TODO: find a better way to automatically detect this
 create_generic_model(model_fpath, frame_map, torso_frame_offset,
                      generic_model_fpath)
 
-# Step 3: Model scaling.
-# ----------------------
-# A map defining the rules for computing scale factors for each segment. Each rule is a
-# tuple of (Theia frame 1, Theia frame 2, axis index), where the axis index is 0 for X,
-# 1 for Y, and 2 for Z. The scale factor for a segment is computed as the ratio of the
-# distance between the two Theia frames to the distance between the corresponding
-# offset frames in the model.
-# segment_name --> [data_label_1, data_label_2, axis]
+# Step 3: Position-based scaling
+# ------------------------------
+# We will scale a generic OpenSim model based on the positions of body segments
+# measured by Theia. This is similar to the approach used by the OpenSim scale tool,
+# which computes scale factors for each body segment based on the ratio of measured
+# distances between experimental markers and the corresponding distances between
+# virtual markers on the model.
+
+# Define a mapping between experimental data labels and model frames.
+# (data label --> model frame path)
+frame_map = {
+    'l_thigh': '/jointset/hip_l/femur_l_offset/l_thigh',
+    'l_shank': '/jointset/walker_knee_l/tibia_l_offset/l_shank',
+    'l_foot': '/jointset/ankle_l/talus_l_offset/l_foot',
+    'l_toes': '/jointset/mtp_l/toes_l_offset/l_toes',
+    'r_thigh': '/jointset/hip_r/femur_r_offset/r_thigh',
+    'r_shank': '/jointset/walker_knee_r/tibia_r_offset/r_shank',
+    'r_foot': '/jointset/ankle_r/talus_r_offset/r_foot',
+    'r_toes': '/jointset/mtp_r/toes_r_offset/r_toes',
+    'l_uarm': '/jointset/acromial_l/humerus_l_offset/l_uarm',
+    'l_larm': '/jointset/elbow_l/ulna_l_offset/l_larm',
+    'l_hand': '/jointset/radius_hand_l/hand_l_offset/l_hand',
+    'r_uarm': '/jointset/acromial_r/humerus_r_offset/r_uarm',
+    'r_larm': '/jointset/elbow_r/ulna_r_offset/r_larm',
+    'r_hand': '/jointset/radius_hand_r/hand_r_offset/r_hand',
+    'pelvis': '/bodyset/pelvis/pelvis',
+    'torso': '/bodyset/torso/torso',
+}
+
+# Define a mapping between model body segments and the scaling "rules" to apply during
+# model scaling. Each rule consists of two Theia frame data labels and the axis
+# along which to apply the scale factor. The scale factor is computed as the ratio of
+# the distance between the two Theia frames in the experimental data and the distance
+# between the corresponding points on the model.
+# (segment_name --> [data_label_1, data_label_2, axis])
 scale_map = {
     'pelvis': ['pelvis', 'torso', Axis.YAxis],
     'pelvis': ['l_thigh', 'r_thigh', Axis.ZAxis],
@@ -94,18 +123,19 @@ scale_map = {
     'calcn_l': ['l_foot', 'l_toes', Axis.YAxis]
 }
 
-# Scale a model from position-based (e.g., Vec3) data.
+# Load the model and Theia frame data, and create a PositionDataScaler object.
 model = osim.Model('unscaled_generic.osim')
 c3d_source = TheiaFrameSource(os.path.join('data', trial_relpath, 'pose_0.c3d'))
 position_scaler = PositionDataScaler(model, c3d_source)
 
-# Add scales.
+# Add scaling rules to the PositionDataScaler based on the mapping above.
 for segment_name, (data_label_1, data_label_2, axis) in scale_map.items():
     measurement = FrameMeasurement(frame_map[data_label_1], frame_map[data_label_2])
     scale_factor = ScaleFactor(data_label_1, data_label_2, measurement, axis)
     position_scaler.add_scale(segment_name, scale_factor)
 
-# Add symmetry pairs.
+# Add symmetry pairs. Internally, the PositionDataScaler will average the scale factors
+# computed for each pair of symmetric segments to ensure left-right symmetry.
 position_scaler.add_symmetry_pair('humerus_l', 'humerus_r')
 position_scaler.add_symmetry_pair('radius_l', 'radius_r')
 position_scaler.add_symmetry_pair('femur_l', 'femur_r')
@@ -114,11 +144,18 @@ position_scaler.add_symmetry_pair('calcn_l', 'calcn_r')
 
 # Scale the model.
 scaled_model = position_scaler.scale()
-scaled_model.printToXML(os.path.join('data', trial_relpath, 'jump_1_scaled.osim'))
+scaled_model.printToXML('jump_1_scaled.osim')
 
+# Step 4: Anthropometry-based scaling
+# -----------------------------------
+# Next, we will adjust the scaled model based on anthropometric measurements from the
+# ANSUR II dataset.
 
-# Step 4: Adjust anthropometry.
-# -----------------------------
+# Define a mapping between ANSUR II measurement labels and pairs of stations (e.g.,
+# body-fixed points) representing the measurement, along with the axis along which to
+# apply the measurement. If no axis is specified, the measurement will be applied
+# isotropically.
+# ansur_label --> (station1_path, station2_path, axis)
 ansur_measurements = {
     'biacromialbreadth':      ('/acromion_r', '/acromion_l', None),
     'bicristalbreadth':       ('/iliocrestale_r', '/iliocrestale_l', None),
@@ -137,12 +174,29 @@ ansur_measurements = {
     'waistdepth':             ('/posterior_omphalion', '/anterior_omphalion', None)
 }
 
+# Create the AnthropometricScaler and add measurements based on the mapping above.
 anthropometric_scaler = AnthropometricScaler(scaled_model, sex='female')
 
+# Add measurements to the AnthropometricScaler. Each measurement is defined by a pair of
+# stations and an axis along which to apply the measurement.
 for ansur_label, (station1_path, station2_path, axis) in ansur_measurements.items():
     measurement = AnthropometricMeasurement(station1_path, station2_path, axis)
     anthropometric_scaler.add_measurement(ansur_label, measurement)
 
+# Select of subset of the measurements that we will use to condition the
+# multivariate normal distribution. These measurements are "trustworthy" in the
+# sense that we can estimate them relatively well from the Theia frames.
+anthropometric_scaler.add_conditional_measurement('iliocristaleheight')
+anthropometric_scaler.add_conditional_measurement('radialestylionlength')
+anthropometric_scaler.add_conditional_measurement('shoulderelbowlength')
+anthropometric_scaler.add_conditional_measurement('stature')
+anthropometric_scaler.add_conditional_measurement('suprasternaleheight')
+anthropometric_scaler.add_conditional_measurement('tibialheight')
+anthropometric_scaler.add_conditional_measurement('trochanterionheight')
+anthropometric_scaler.add_conditional_measurement('waistbacklength')
+
+# Define the scale factors that will be generated from the conditioned anthropometric
+# measurements.
 anthropometric_scaler.add_scale_factor('torso', 'biacromialbreadth', Axis.ZAxis)
 anthropometric_scaler.add_scale_factor('pelvis', 'bicristalbreadth', Axis.ZAxis)
 anthropometric_scaler.add_scale_factor('tibia_r', 'bimalleolarbreadth', Axis.YAxis)
@@ -154,48 +208,82 @@ anthropometric_scaler.add_scale_factor('calcn_r', 'footbreadthhorizontal', Axis.
 anthropometric_scaler.add_scale_factor('calcn_l', 'footlength', Axis.XAxis)
 anthropometric_scaler.add_scale_factor('calcn_l', 'footbreadthhorizontal', Axis.ZAxis)
 
+# Scale the model.
 anthro_scaled_model = anthropometric_scaler.scale()
-anthro_scaled_model.printToXML(os.path.join('data', trial_relpath,
-                                            'jump_1_anthro_scaled.osim'))
+anthro_scaled_model.printToXML('jump_1_anthro_scaled.osim')
 
-
-# Step 5: Inverse kinematics.
-# ---------------------------
-# Using CasADi (https://web.casadi.org/), create a custom inverse kinematics problem
-# that minimizes the error between model and Theia frame positions and orientations.
-
-# Update the positions and orientations tables from the Theia data to only include the
-# frames that we added to the model based on 'frame_map' above. We also need to update
-# the column labels in the positions and orientations tables to match the frame names in
-# the model.
+# Step 5: Frame-by-frame inverse kinematics
+# ----------------------------------------
+# Reload the Theia frame data, now discarding any unused data columns and updating the
+# frame labels to match the model frame paths.
 columns_to_remove = ['worldbody', 'head', 'pelvis_shifted', 'l_clavicle', 'r_clavicle']
-positions = c3d_source.get_positions_table()
-TheiaFrameSource.remove_columns(positions, columns_to_remove)
-TheiaFrameSource.update_column_labels(positions, frame_map)
-orientations = c3d_source.get_orientations_table()
-TheiaFrameSource.remove_columns(orientations, columns_to_remove)
-TheiaFrameSource.update_column_labels(orientations, frame_map)
+theia_frame_source = TheiaFrameSource(os.path.join('data', trial_relpath, 'pose_0.c3d'),
+                                      labels_to_remove=columns_to_remove,
+                                      label_map=frame_map)
 
-# Cost function weights.
-# - position: squared norm of frame position errors (in m^2)
-# - orientation: quaternion distance of frame orientation errors (between [0, 1])
-# - smoothness: sum of squared differences in generalized coordinates between current
-#               and previous time step (in rad^2 or m^2)
-weights = {'position': 2.0,
-           'orientation': 5.0,
-           'smoothness': 0.5}
-
-# Convergence tolerance: controls various IPOPT tolerances (e.g., primal and dual
-# feasibility, acceptable tol, etc.).
-convergence_tolerance = 1e-4
-
-solver = InverseKinematicsSolver(anthro_scaled_model, positions, orientations,
-                                 convergence_tolerance=convergence_tolerance,
-                                 position_weight=weights['position'],
-                                 orientation_weight=weights['orientation'],
-                                 smoothness_weight=weights['smoothness'])
-
-states = solver.solve()
+# Run the frame-by-frame IK solver.
+weights = {'position': 2.0, 'orientation': 5.0}
+solver = InverseKinematicsSolver(anthro_scaled_model,
+                                 convergence_tolerance=1e-4,
+                                 weights=weights)
+solver.add_theia_frame_source(theia_frame_source)
+ik_solution = solver.solve()
 sto = osim.STOFileAdapter()
-sto.write(states, os.path.join('data', trial_relpath, 'jump_1_ik_solution.sto'))
+sto.write(ik_solution, 'jump_1_ik_solution.sto')
+
+# Step 6: Spline-based inverse kinematics
+# --------------------------------------
+# Run the spline IK solver, initialized with the frame-by-frame solution.
+solver = SplineBasedInverseKinematicsSolver(anthro_scaled_model,
+                                            convergence_tolerance=1e-4,
+                                            weights=weights,
+                                            knot_interval=0.10)
+solver.add_theia_frame_source(theia_frame_source)
+spline_ik_solution = solver.solve(osim.TimeSeriesTable('jump_1_ik_solution.sto'))
+sto = osim.STOFileAdapter()
+sto.write(spline_ik_solution, 'jump_1_spline_ik_solution.sto')
+
+# Step 7: Visualization
+# ---------------------
+modelProcessor = osim.ModelProcessor('jump_1_anthro_scaled.osim')
+modelProcessor.append(osim.ModOpRemoveMuscles())
+model = modelProcessor.process()
+model.initSystem()
+
+states = osim.TimeSeriesTable('jump_1_spline_ik_solution.sto')
+states.addTableMetaDataString('inDegrees', 'no')
+osim.VisualizerUtilities.showMotion(model, states)
+
+# Step 8: Plot joint kinematics
+# -----------------------------
+coordinate = '/jointset/hip_r/hip_flexion_r/value'
+ylabel = 'hip flexion (deg)'
+fig = plt.figure(figsize=(6.5, 4))
+ax = fig.subplots(1, 1)
+
+# Plot frame-by-frame IK solution.
+solution = osim.TimeSeriesTable('jump_1_ik_solution.sto')
+t = np.array(solution.getIndependentColumn())
+ax.plot(solution.getIndependentColumn(),
+        np.rad2deg(solution.getDependentColumn(coordinate).to_numpy()),
+        color='black', lw=5.0, alpha=0.5,
+        label='Frame-by-frame IK')
+ax.set_ylabel(ylabel)
+ax.grid(True, which='both', ls='--', lw=0.5, alpha=0.75)
+
+# Plot the spline-based IK solutions.
+solution = osim.TimeSeriesTable(
+    f'jump_1_spline_ik_solution.sto')
+t_spline = np.array(solution.getIndependentColumn())
+y_spline = np.rad2deg(solution.getDependentColumn(coordinate).to_numpy())
+ax.plot(t_spline, y_spline,
+        color='darkorange', lw=3.5,
+        label=f'Spline-based IK')
+ax.set_ylim(-5, 85)
+ax.set_xlabel('time (s)')
+ax.legend(loc='upper left', fontsize=11)
+
+plt.tight_layout()
+plt.savefig('compare_joint_kinematics.png', dpi=150, bbox_inches='tight')
+plt.show()
 
